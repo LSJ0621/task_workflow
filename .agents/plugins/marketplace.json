@@ -1,0 +1,20 @@
+{
+  "name": "task-workflow-marketplace",
+  "interface": {
+    "displayName": "Task Workflow"
+  },
+  "plugins": [
+    {
+      "name": "task-workflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/task-workflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
