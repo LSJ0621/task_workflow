@@ -77,16 +77,14 @@ $verify-work 현재 구현이 요구사항을 만족하는지 검사하고 핵�
 codex plugin marketplace upgrade task-workflow-marketplace
 ```
 
-이 명령은 마켓플레이스 저장소를 갱신합니다. 설치된 복사본까지 확실히 다시 가져오려면 해당 플러그인만 제거한 뒤 재설치합니다.
+Codex CLI 0.166.0에서는 이 명령이 새 Git 마켓플레이스 스냅샷을 가져오면 그 마켓플레이스의 설치된 플러그인 캐시도 함께 갱신합니다. 일반 업데이트에 삭제·재설치는 필요하지 않습니다.
 
-```bash
-codex plugin remove task-workflow@task-workflow-marketplace
-codex plugin add task-workflow@task-workflow-marketplace
-```
-
-새 Codex 채팅 또는 CLI 세션을 시작해 변경된 스킬을 사용합니다. CLI에서는 `/new`로 새 채팅을 시작할 수 있습니다.
+갱신이 성공한 뒤 새 Codex 채팅 또는 CLI 세션을 시작해 변경된 스킬을 사용합니다. CLI에서는 `/new`로 새 채팅을 시작할 수 있습니다.
 이 과정은 설치된 플러그인과 캐시를 갱신하며 프로젝트 안의 작업 기록이나 개인 `AGENTS.md`를 수정하는 작업은 아닙니다.
-메뉴로 관리하려면 `/plugins`에서 마켓플레이스를 갱신한 뒤 Task Workflow를 업데이트하거나 재설치합니다. 정확한 메뉴 표시는 Codex 버전에 따라 다를 수 있습니다.
+메뉴로 관리하려면 `/plugins`에서 Task Workflow 마켓플레이스를 선택하고 표시되는 Upgrade 기능을 사용합니다. 정확한 메뉴 표시는 Codex 버전에 따라 다를 수 있습니다.
+오류가 발생하면 오류 메시지와 Codex 버전을 먼저 확인합니다. 제거·재설치는 일반 업데이트 절차가 아니라 문제 해결이 필요한 경우의 선택지입니다.
+
+동작 근거: [Codex 0.166.0 마켓플레이스·설치 캐시 갱신 구현](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core-plugins/src/manager.rs#L3026-L3108).
 
 ## 참고
 
