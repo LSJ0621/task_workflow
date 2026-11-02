@@ -1,6 +1,6 @@
 # Task Workflow
 
-과제와 개인 프로젝트에서 사용할 독립적인 Codex 스킬 4개입니다.
+과제와 개인 프로젝트에서 사용할 독립적인 Codex·Claude Code 스킬 4개입니다.
 특정 대회, 기술 스택, 문서 형식, 제한시간을 고정하지 않습니다.
 
 | 스킬 | 사용하는 시점 |
@@ -26,6 +26,15 @@ codex plugin list --json
 설치 후 새 Codex 채팅 또는 CLI 세션을 시작합니다. CLI에서는 `/plugins`에서도 설치 상태를 확인할 수 있습니다.
 COFA 등 다른 컴퓨터에서도 해당 Codex 버전과 운영 정책이 이 설치 방식을 지원해야 합니다.
 
+## Claude Code에서 설치
+
+```bash
+claude plugin marketplace add LSJ0621/task_workflow
+claude plugin install task-workflow@task-workflow-marketplace
+```
+
+설치 후 새 Claude Code 세션을 시작합니다. 스킬 본문은 Codex와 같은 파일을 사용합니다.
+
 ## 사용 예시
 
 ```text
@@ -48,7 +57,7 @@ $collaborate-plan-execute 확정된 계획을 실행해줘. 독립 작업을 내
 $verify-work 현재 구현이 요구사항을 만족하는지 검사해줘. 프로젝트 기록이 있으면 INDEX·STATUS로 기준 문서를 찾아 현재 내용을 확인하고, 없으면 내가 제공한 요구사항을 사용해줘. 검증만 하고 소스·테스트·설계 파일은 추가하거나 수정하지 마.
 ```
 
-일반 요청에서도 관련 스킬이 선택될 수 있습니다. 확실히 지정하려면 `$스킬이름`을 사용하세요.
+일반 요청에서도 관련 스킬이 선택될 수 있습니다. 확실히 지정하려면 Codex에서는 `$스킬이름`, Claude Code에서는 `/task-workflow:스킬이름`을 사용하세요.
 스킬 선택 자체가 계획 전용 요청을 실행 요청으로 바꾸지는 않습니다.
 해시 비교는 STATUS.md에만 적용합니다. 다른 문서의 최신 내용·결정 이유는 주제별 문서에 유지하고, 정확한 과거 원문·변경 전후는 필요할 때 Git에서 확인합니다. 다른 세션에 영향을 주는 중요한 문서 변경은 STATUS에 짧은 요약과 링크로 반영합니다.
 설치만으로 모든 세션이나 compact 이후에 규칙이 자동 실행되는 것은 아닙니다. AGENTS 연결이 없는 세션에서는 새 세션·compact 후 `$maintain-work-notes`를 다시 호출하세요. 프로젝트 AGENTS 연결은 별도로 요청할 수 있으며 설치·업데이트만으로 AGENTS.md나 전역 설정을 변경하지 않습니다.
@@ -71,6 +80,8 @@ AGENTS.md는 재로드를 지시하는 지침이며 실행 훅이 아닙니다. 
 - `.agents/plugins/marketplace.json`: GitHub 저장소를 설치 목록으로 등록하기 위한 설정.
 - `plugins/task-workflow/plugin.json`: 표준 플러그인 manifest.
 - `plugins/task-workflow/.codex-plugin/plugin.json`: Codex 호환 manifest. 같은 이름·버전·표시 정보를 유지합니다.
+- `.claude-plugin/marketplace.json`: Claude Code 설치 목록 설정.
+- `plugins/task-workflow/.claude-plugin/plugin.json`: Claude Code manifest. 같은 이름·버전을 유지합니다.
 - `plugins/task-workflow/skills/`: 스킬 지침과 필요할 때만 읽는 참고 지침.
 - 각 스킬의 `agents/openai.yaml`: UI 표시 정보이며 커스텀 서브에이전트 정의가 아닙니다.
 
@@ -95,7 +106,7 @@ STATUS 변경 확인에는 `git hash-object --no-filters -- <STATUS 경로>`를 
 
 ## 수정 후 업데이트
 
-스킬과 참고 지침을 수정하고 두 manifest의 버전을 함께 올린 뒤 GitHub에 업로드합니다.
+스킬과 참고 지침을 수정하고 세 manifest의 버전을 함께 올린 뒤 GitHub에 업로드합니다.
 사용자 환경에서는 먼저 설치 출처인 Git 저장소를 새로 가져옵니다.
 
 ```bash
@@ -110,6 +121,13 @@ Codex CLI 0.166.0에서는 이 명령이 새 Git 마켓플레이스 스냅샷을
 오류가 발생하면 오류 메시지와 Codex 버전을 먼저 확인합니다. 제거·재설치는 일반 업데이트 절차가 아니라 문제 해결이 필요한 경우의 선택지입니다.
 
 동작 근거: [Codex 0.166.0 마켓플레이스·설치 캐시 갱신 구현](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core-plugins/src/manager.rs#L3026-L3108).
+
+Claude Code에서는 다음 명령으로 갱신하고 새 세션을 시작합니다.
+
+```bash
+claude plugin marketplace update task-workflow-marketplace
+claude plugin update task-workflow@task-workflow-marketplace
+```
 
 ## 참고
 
