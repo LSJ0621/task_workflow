@@ -1,6 +1,6 @@
 {
   "name": "task-workflow",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Understand tasks, preserve working context, plan and coordinate agents, and verify deliverables with concise communication.",
   "author": {
     "name": "LSJ0621"
