@@ -10,7 +10,7 @@
 
 ```markdown
 ## 작업 맥락 재개
-- 새 세션·재개·compact 후 작업을 이어가기 전에 설치된 task-workflow:maintain-work-notes의 SKILL.md와 필요한 STATUS 운영 참조를 다시 읽어 적용한다. 재개 자체를 구현·재설계 허가로 해석하지 않는다.
+- 새 세션·재개·compact 후 작업을 이어가기 전에 설치된 task-workflow:maintain-work-notes의 SKILL.md와 공통 읽기 참조(reading.md)를 다시 읽어 적용한다. 재개 자체를 구현·재설계 허가로 해석하지 않는다.
 - 프로젝트 기록은 docs/work-notes/INDEX.md에서 찾고 현재 작업에 필요한 문서만 읽는다.
 ```
 
