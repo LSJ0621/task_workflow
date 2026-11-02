@@ -1,13 +1,19 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "task-workflow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Understand tasks, preserve working context, plan and coordinate agents, and verify deliverables with concise communication.",
   "author": {
     "name": "LSJ0621"
   },
   "repository": "https://github.com/LSJ0621/task_workflow",
-  "keywords": ["requirements", "working-notes", "planning", "collaboration", "verification"],
+  "keywords": [
+    "requirements",
+    "working-notes",
+    "planning",
+    "collaboration",
+    "verification"
+  ],
   "extensions": {
     "com.openai": {
       "interface": {
@@ -16,7 +22,11 @@
         "longDescription": "Four independent skills for understanding tasks and data, maintaining Markdown notes with an INDEX, planning and executing delegated work, and checking actual results against requirements.",
         "developerName": "LSJ0621",
         "category": "Developer Tools",
-        "capabilities": ["Read", "Write", "Interactive"],
+        "capabilities": [
+          "Read",
+          "Write",
+          "Interactive"
+        ],
         "logo": "./assets/icon.svg",
         "composerIcon": "./assets/icon.svg",
         "websiteURL": "https://github.com/LSJ0621/task_workflow"

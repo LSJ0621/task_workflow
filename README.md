@@ -6,7 +6,7 @@
 | 스킬 | 사용하는 시점 |
 | --- | --- |
 | `analyze-task` | 자료를 이해하고 요구사항·데이터·중요 질문을 정리할 때 |
-| `maintain-work-notes` | 논의·결정을 기록하거나 Markdown 문서를 정리하고 작업을 재개할 때 |
+| `maintain-work-notes` | 논의·결정을 기록하고 문서와 필요한 Git 이력으로 정리·재개할 때 |
 | `collaborate-plan-execute` | 계획에 병렬·순차 작업을 반영하거나, 확정된 계획을 위임·통합할 때 |
 | `verify-work` | 실제 결과물이 요구사항을 충족하는지 검사하고 핵심 구현을 이해할 때 |
 
@@ -34,6 +34,8 @@ $analyze-task 첨부 자료와 @참조한 데이터를 분석해줘. 내가 이�
 $maintain-work-notes 지금까지 합의한 내용과 미해결 쟁점을 기록하고 INDEX.md를 갱신해줘.
 
 $maintain-work-notes 기존 기록을 읽고 현재 상태와 다음 작업을 파악해줘. 구현은 시작하지 마.
+
+$maintain-work-notes 문서를 재정리해줘. 중요한 결정 이유는 유지하고 과거 원문은 확인된 커밋과 당시 경로로 연결해줘.
 
 $collaborate-plan-execute 계획만 작성해줘. 작업 의존관계, 파일 담당 범위, 병렬·순차 실행과 통합 기준을 포함해줘.
 
@@ -69,13 +71,22 @@ $verify-work 현재 구현이 요구사항을 만족하는지 검사하고 핵�
 ## 수정 후 업데이트
 
 스킬과 참고 지침을 수정하고 두 manifest의 버전을 함께 올린 뒤 GitHub에 업로드합니다.
-사용자 환경에서는 다음으로 저장소를 새로 가져온 후 플러그인 업데이트 또는 재설치를 진행합니다.
+사용자 환경에서는 먼저 설치 출처인 Git 저장소를 새로 가져옵니다.
 
 ```bash
 codex plugin marketplace upgrade task-workflow-marketplace
 ```
 
-새 세션에서 변경된 스킬을 확인합니다. 업데이트 동작은 사용 중인 Codex 버전의 `/plugins` 안내를 따릅니다.
+이 명령은 마켓플레이스 저장소를 갱신합니다. 설치된 복사본까지 확실히 다시 가져오려면 해당 플러그인만 제거한 뒤 재설치합니다.
+
+```bash
+codex plugin remove task-workflow@task-workflow-marketplace
+codex plugin add task-workflow@task-workflow-marketplace
+```
+
+새 Codex 채팅 또는 CLI 세션을 시작해 변경된 스킬을 사용합니다. CLI에서는 `/new`로 새 채팅을 시작할 수 있습니다.
+이 과정은 설치된 플러그인과 캐시를 갱신하며 프로젝트 안의 작업 기록이나 개인 `AGENTS.md`를 수정하는 작업은 아닙니다.
+메뉴로 관리하려면 `/plugins`에서 마켓플레이스를 갱신한 뒤 Task Workflow를 업데이트하거나 재설치합니다. 정확한 메뉴 표시는 Codex 버전에 따라 다를 수 있습니다.
 
 ## 참고
 
