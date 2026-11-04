@@ -1,0 +1,3 @@
+interface:
+  display_name: "프로젝트 지침 설정"
+  short_description: "프로젝트 자료와 기존 지침으로 AGENTS.md 초안을 제안하고 검수 후 반영합니다"

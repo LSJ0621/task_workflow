@@ -1,13 +1,13 @@
 {
   "name": "task-workflow-marketplace",
-  "description": "Task Workflow skills for understanding tasks, keeping work notes, coordinating agents, and verifying results.",
+  "description": "Task Workflow skills for project guidance, task analysis, work notes, agent collaboration, and verification.",
   "owner": {
     "name": "LSJ0621"
   },
   "plugins": [
     {
       "name": "task-workflow",
-      "description": "Understand tasks, preserve working context, plan and coordinate agents, and verify deliverables with concise communication.",
+      "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, and verify deliverables.",
       "source": "./plugins/task-workflow",
       "category": "productivity"
     }
