@@ -39,7 +39,7 @@ description: 비서. 사용자와 직접 대화하는 세션이 작업 지시, �
 기준 문서: <지식 베이스>/wiki/criteria/common.md (+ 도메인 기준 경로)
 지식 베이스: <경로 또는 저장소 주소>
 보고: 끝나면 두 줄(완료 / 확인할 것) 400자 안, 앞뒤에 문장 없이. 클라우드면 세션 메시지 도구로 부모 세션 <id>에 보낼 것
-스킬: task-workflow-assistant:lead-task 를 따른다
+스킬: task-workflow-assistant:lead-task 를 따른다. 그 스킬이 없는 환경이면 https://github.com/LSJ0621/task_workflow 를 clone해 plugins/task-workflow-assistant/skills/lead-task/SKILL.md 와 agents/criteria-checker.md 를 읽고 따른다
 ```
 
 ### 질문

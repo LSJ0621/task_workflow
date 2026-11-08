@@ -31,7 +31,7 @@ description: 개인 지식 베이스(마크다운 git 저장소)를 플러그인
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/setup-knowledge-base/scripts/check_contract.py" <폴더>
    ```
    필수 네 가지 중 실패가 있으면, 초안의 해당 파일을 보여 주고 추가할지 묻는다. 기존 파일은 고치지 않는다. 사용자가 자기 규칙을 이미 갖고 있을 수 있어서다.
-   권장 항목(클라우드 세션 권한 `.claude/settings.json`, 비서용 `CLAUDE.md`, 진행판 `wiki/board.md`)이 없으면 왜 필요한지 한 줄과 함께 추가를 제안한다. 클라우드 권한 파일이 없으면 클라우드 세션이 도구를 쓸 때마다 허용 창이 떠서 자동화가 멈춘다.
+   권장 항목(클라우드 세션 권한 `.claude/settings.json`, 비서용 `CLAUDE.md`, 진행판 `wiki/board.md`)이 없으면 왜 필요한지 한 줄과 함께 추가를 제안한다. 클라우드 권한 파일은 기본 권한 모드를 권한 무시(bypassPermissions)로 두는 한 줄이다. 없으면 클라우드 세션이 도구를 쓸 때마다 허용 창이 떠서 자동화가 멈춘다.
 3. 아래 "설정 저장"을 한다.
 
 ## 설정 저장
