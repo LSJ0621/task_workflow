@@ -10,6 +10,12 @@
       "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, and verify deliverables.",
       "source": "./plugins/task-workflow",
       "category": "productivity"
+    },
+    {
+      "name": "task-workflow-assistant",
+      "description": "Personal assistant harness on top of task-workflow: connect a knowledge base, delegate to lead sessions, review against criteria, keep records. Claude Code only.",
+      "source": "./plugins/task-workflow-assistant",
+      "category": "productivity"
     }
   ]
 }
