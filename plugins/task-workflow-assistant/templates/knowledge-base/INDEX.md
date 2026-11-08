@@ -29,6 +29,7 @@
 - `wiki/templates/` 기록 틀
 - `wiki/projects/` 프로젝트 카드. 프로젝트마다 한 장
 - `wiki/board.md` 진행판. 비서가 갱신
+- `work/` 코드 저장소가 없는 작업의 산출물. 작업마다 폴더 하나, PR로 올림
 - `wiki/conventions.md` 머리말, 파일명, 식별자, 승격 절차
 - `tests/regression.md` 회귀 질문
 
