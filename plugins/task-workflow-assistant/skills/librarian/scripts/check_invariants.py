@@ -48,7 +48,7 @@ def main():
     for p in kb.glob("**/*.md"):
         if ".git" in p.parts or skip & set(p.parts) or p.name in skip: continue
         body = p.read_text(encoding="utf-8")
-        for ref in set(re.findall(r"\b([CDXR]-\d{8}-\d{2}|P-[A-Z]+-\d+)\b", body)):
+        for ref in set(re.findall(r"\b([CDXR]-\d{8}-\d{2}|P-[A-Z]+-\d{2,})\b", body)):
             if ref not in all_ids and "{{" not in ref:
                 problems.append(f"없는 id 참조 {ref}: {p.relative_to(kb)}")
     print(f"점검 대상: {kb} · 원본 {len(raw_files)}개, 기준 {len(crit_ids)}개")
