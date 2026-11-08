@@ -1,6 +1,6 @@
 {
   "name": "task-workflow-assistant",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "개인 지식 베이스를 연결해 비서·팀장·검수자·사서 역할로 작업을 위임·검수·기록한다. Claude Code 전용. task-workflow 플러그인이 필요하다.",
   "author": {
     "name": "LSJ0621"
