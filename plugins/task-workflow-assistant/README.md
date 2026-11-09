@@ -8,8 +8,8 @@
 | 구성 | 역할 |
 | --- | --- |
 | `skills/setup-knowledge-base` | 지식 베이스를 초안으로 만들거나 기존 것을 연결한다 |
-| `skills/run-assistant` | 비서. 지시를 받아 팀장 세션을 열고 두 줄 보고를 전달한다 |
-| `skills/lead-task` | 팀장. 기준을 읽고 나누고 위임하고 검수자를 부른 뒤 400자로 보고한다 |
+| `skills/run-assistant` | 비서. 지시를 받아 팀장 세션을 열고 보고서를 읽고 사용자 말로 전달한다 |
+| `skills/lead-task` | 팀장. 기준을 읽고 나누고 위임하고 검수자를 부른 뒤 보고서를 쓰고 경로 한 줄을 보낸다 |
 | `agents/criteria-checker` | 검수자. 산출물을 기준 문서와 대조해 판정하고 검수 결과 문서를 쓴다 |
 | `skills/librarian` | 사서. 낮에는 메모 한 줄(쪽지), 밤에는 메모를 정식 기록으로(정리) |
 | `skills/inspect-work` | 작업 점검. 사용자가 오늘 작업을 직접 보고 지적한다 |
