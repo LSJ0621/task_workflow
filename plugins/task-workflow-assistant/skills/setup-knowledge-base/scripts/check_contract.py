@@ -1,35 +1,38 @@
 #!/usr/bin/env python3
-"""지식 베이스가 플러그인이 기대하는 네 가지 계약을 지키는지 점검한다.
+"""지식 베이스가 플러그인이 기대하는 세 가지 계약을 지키는지 점검한다.
 
 사용: check_contract.py <지식 베이스 폴더>
-종료 코드 0 = 네 가지 모두 통과. 1 = 하나라도 실패. 권장 항목(클라우드 권한 파일, 비서용 CLAUDE.md)은 실패로 치지 않는다.
+종료 코드 0 = 세 가지 모두 통과. 1 = 하나라도 실패.
+필수: 색인(INDEX.md), 메모 위치(raw/journal/), 기준 문서 위치(wiki/criteria/common.md).
+권장 항목(권한 파일, 비서 지시 CLAUDE.md, 진행판, git 저장소)은 실패로 치지 않는다.
+규칙과 틀은 플러그인 스킬 안에 있으므로 지식 베이스에 규칙 문서가 있을 필요는 없다.
 """
-import pathlib, re, sys
+import pathlib, subprocess, sys
+
+def is_git(kb):
+    try:
+        r = subprocess.run(["git", "-C", str(kb), "rev-parse", "--is-inside-work-tree"],
+                           capture_output=True, text=True)
+        return r.returncode == 0 and r.stdout.strip() == "true"
+    except OSError:
+        return False
 
 def main():
     if len(sys.argv) < 2:
         sys.exit("사용: check_contract.py <지식 베이스 폴더>")
     kb = pathlib.Path(sys.argv[1]).expanduser().resolve()
-    conv = kb / "wiki" / "conventions.md"
-    conv_text = conv.read_text(encoding="utf-8") if conv.exists() else ""
-    readme = kb / "README.md"
-    readme_text = readme.read_text(encoding="utf-8") if readme.exists() else ""
 
     required = [
-        ("규칙 문서", conv.exists() and all(k in conv_text for k in ["식별자", "머리말"]),
-         "wiki/conventions.md 에 식별자·머리말 규칙이 있어야 한다"),
-        ("색인", (kb / "INDEX.md").exists(), "INDEX.md 가 있어야 한다"),
-        ("불변 조건", "불변 조건" in readme_text, "README.md 에 '불변 조건' 절이 있어야 한다"),
-        ("메모 위치", bool(re.search(r"journal|메모", conv_text)), "wiki/conventions.md 에 메모 위치가 적혀 있어야 한다"),
+        ("색인", (kb / "INDEX.md").is_file(), "INDEX.md 가 있어야 한다"),
+        ("메모 위치", (kb / "raw" / "journal").is_dir(), "raw/journal/ 폴더가 있어야 한다"),
+        ("기준 문서 위치", (kb / "wiki" / "criteria" / "common.md").is_file(),
+         "wiki/criteria/common.md 가 있어야 한다"),
     ]
-    claude_md = kb / "CLAUDE.md"
-    claude_md_text = claude_md.read_text(encoding="utf-8") if claude_md.exists() else ""
     recommended = [
-        ("클라우드 세션 권한", (kb / ".claude" / "settings.json").exists(), ".claude/settings.json"),
-        ("비서용 CLAUDE.md", claude_md.exists(), "CLAUDE.md"),
-        ("CLAUDE.md의 글쓰기 절 안내", claude_md.exists() and "글쓰기" in claude_md_text,
-         "CLAUDE.md 에 '문서를 쓸 때는 wiki/conventions.md 글쓰기 절을 따른다' 한 줄"),
+        ("권한 파일(밤 사서 클라우드 실행용)", (kb / ".claude" / "settings.json").exists(), ".claude/settings.json"),
+        ("비서 지시", (kb / "CLAUDE.md").exists(), "CLAUDE.md"),
         ("진행판", (kb / "wiki" / "board.md").exists(), "wiki/board.md"),
+        ("git 저장소", is_git(kb), "git init"),
     ]
     ok = True
     print(f"점검 대상: {kb}")

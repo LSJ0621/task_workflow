@@ -5,7 +5,7 @@
 #       메모마다 push하면 과해서, 세션이 응답을 끝낼 때(Stop)와 세션이 닫힐 때(SessionEnd) 조건을 보고 한다.
 #
 # push하는 조건 세 가지. 하나라도 아니면 아무것도 안 하고 종료 코드 0.
-#   1. 대상 폴더가 지식 베이스다: README.md에 "불변 조건"이 있고, INDEX.md가 있고, git 저장소다.
+#   1. 대상 폴더가 지식 베이스다: INDEX.md와 raw/journal/이 있는 git 저장소다.
 #   2. raw/journal/을 건드린 push 안 된 커밋이 있다: 현재 브랜치에 upstream이 있고 `git log @{u}..HEAD -- raw/journal/`이 비어 있지 않다.
 #   3. 마지막 push 시도가 30분 넘게 지났다: 도장 파일 .git/journal-push-stamp가 없거나 1800초 이상 전이다.
 #      도장은 push를 시도할 때 갱신한다(성공·실패 무관). 실패를 매 응답마다 되풀이하지 않기 위해서다.
@@ -40,11 +40,11 @@ is_kb() {
   if [ -z "$d" ] || [ ! -d "$d" ]; then
     why="폴더 없음 ($d)"; return 1
   fi
-  if ! grep -q "불변 조건" "$d/README.md" 2>/dev/null; then
-    why="README.md에 '불변 조건' 없음 ($d)"; return 1
-  fi
   if [ ! -f "$d/INDEX.md" ]; then
     why="INDEX.md 없음 ($d)"; return 1
+  fi
+  if [ ! -d "$d/raw/journal" ]; then
+    why="raw/journal/ 없음 ($d)"; return 1
   fi
   if ! git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     why="git 저장소 아님 ($d)"; return 1
