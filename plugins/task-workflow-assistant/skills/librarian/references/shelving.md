@@ -80,9 +80,9 @@
 
     **스킬 수정 제안**은 플러그인 저장소 PR로 가른다. 4단계대로 PR 제목에 사례 id가 있다. 플러그인 저장소는 플러그인 `.claude-plugin/plugin.json`의 `repository`다.
     ```bash
-    gh pr list --repo <플러그인 저장소> --state all --search '<사례 id>' --json number,state,title
+    gh pr list --repo <플러그인 저장소> --state all --search '"<사례 id>" in:title' --json number,state,title
     ```
-    머지됨 → `승인됨`, 닫힘 → `기각`, 열림 → 그대로 둔다. PR이 없으면(제안만 보고에 적은 사례) 그대로 둔다.
+    돌아온 `title`에 그 사례 id가 그대로 있는 PR만 본다. 머지됨 → `승인됨`, 닫힘 → `기각`, 열림 → 그대로 둔다. PR이 없으면(제안만 보고에 적은 사례) 그대로 둔다.
 
     비서의 메모는 decision 메모 중 내용이 `기각:`, `부분 승인:`, `머지 충돌:`로 시작하는 줄이다. 이미 정리된 날짜 파일에 있을 수 있으니 `raw/journal/` 전체에서 찾는다(`grep -rnE '(기각|부분 승인|머지 충돌): proposal/' raw/journal/`).
     상태와 반영된 기준, 이 두 필드는 원본에서 고쳐도 되는 필드다. 승인 뒤 사례 상태와 카드의 반영 표시는 **이 단계에서만** 한다. 머지한 비서와 제안한 사서가 저마다 하면 같은 파일을 두 곳에서 고쳐 push가 충돌한다(실제로 PR 두 번 연속 충돌했다).
