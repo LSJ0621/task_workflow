@@ -13,6 +13,7 @@
 | 새 비서 세션이 시작한다 | `wiki/board.md`, 오늘의 `raw/journal/` |
 | 내 프로젝트들이 지금 어떤 상태인지 알아야 한다 | `wiki/projects/` 카드들 |
 | 검수를 한다 | `wiki/templates/review.md` 틀로 결과를 쓰고 `raw/reviews/`에 둔다 |
+| 작업을 끝내고 보고한다 (팀장) | 보고서를 `raw/reports/`에 `B-` 식별자로 쓴다. 형식은 `wiki/conventions.md` 보고서 절. 비서에게는 `보고서: <경로> \| <판정>` 한 줄만 보낸다 |
 | 사용자가 고치거나, 정하거나, 사용자에 대해 알게 됐다 | `raw/journal/오늘.md`에 한 줄. 형식은 `wiki/conventions.md` 메모 절 |
 | 뭔가를 정했다 | `wiki/templates/decision.md` 틀로 `raw/decisions/`에 추가한다 |
 | 기록 형식이나 식별자가 헷갈린다 | `wiki/conventions.md` |
@@ -24,6 +25,7 @@
 - `raw/decisions/` 결정과 이유
 - `raw/context/` 나에 대한 맥락. 상황, 제약, 선호, 생활
 - `raw/reviews/` 검수 결과
+- `raw/reports/` 팀장 보고서. 작업이 끝나면 팀장이 쓰고, 비서가 읽어 사용자 말로 다시 써서 전달한다. 끝에 "확인할 것" 절이 반드시 있다
 - `raw/journal/` 날짜별 메모. 사서가 밤에 정식 기록으로 옮김
 - `wiki/criteria/` 기준. 공통 하나, 도메인별 하나씩
 - `wiki/templates/` 기록 틀
