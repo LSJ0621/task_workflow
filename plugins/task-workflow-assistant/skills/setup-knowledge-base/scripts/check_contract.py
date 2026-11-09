@@ -22,9 +22,13 @@ def main():
         ("불변 조건", "불변 조건" in readme_text, "README.md 에 '불변 조건' 절이 있어야 한다"),
         ("메모 위치", bool(re.search(r"journal|메모", conv_text)), "wiki/conventions.md 에 메모 위치가 적혀 있어야 한다"),
     ]
+    claude_md = kb / "CLAUDE.md"
+    claude_md_text = claude_md.read_text(encoding="utf-8") if claude_md.exists() else ""
     recommended = [
         ("클라우드 세션 권한", (kb / ".claude" / "settings.json").exists(), ".claude/settings.json"),
-        ("비서용 CLAUDE.md", (kb / "CLAUDE.md").exists(), "CLAUDE.md"),
+        ("비서용 CLAUDE.md", claude_md.exists(), "CLAUDE.md"),
+        ("CLAUDE.md의 글쓰기 절 안내", claude_md.exists() and "글쓰기" in claude_md_text,
+         "CLAUDE.md 에 '문서를 쓸 때는 wiki/conventions.md 글쓰기 절을 따른다' 한 줄"),
         ("진행판", (kb / "wiki" / "board.md").exists(), "wiki/board.md"),
     ]
     ok = True

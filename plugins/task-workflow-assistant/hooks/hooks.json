@@ -1,0 +1,27 @@
+{
+  "description": "지식 베이스 메모(raw/journal/)의 push 안 된 커밋을 30분에 한 번 push한다",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/push-journal.sh\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/push-journal.sh\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -11,7 +11,8 @@
 | `skills/run-assistant` | 비서. 지시를 받아 팀장 세션을 열고 보고서를 읽고 사용자 말로 전달한다 |
 | `skills/lead-task` | 팀장. 기준을 읽고 나누고 위임하고 검수자를 부른 뒤 보고서를 쓰고 경로 한 줄을 보낸다 |
 | `agents/criteria-checker` | 검수자. 산출물을 기준 문서와 대조해 판정하고 검수 결과 문서를 쓴다 |
-| `skills/librarian` | 사서. 낮에는 메모 한 줄(쪽지), 밤에는 메모를 정식 기록으로(정리) |
+| `skills/librarian` | 사서. 낮에는 주제가 끝날 때 메모 한 줄(쪽지), 밤에는 메모를 정식 기록으로(정리). push는 훅이 하루 한 번 |
+| `hooks/push-journal.sh` | 지식 베이스에서 연 세션이 응답을 끝낼 때마다 돈다. push 안 된 메모 커밋이 있으면 30분에 한 번 push한다. 클라우드 세션은 메모를 읽는 쪽이라 훅이 필요 없다 |
 | `skills/inspect-work` | 작업 점검. 사용자가 오늘 작업을 직접 보고 지적한다 |
 | `templates/knowledge-base` | 지식 베이스 초안. 개인 내용은 없다 |
 
