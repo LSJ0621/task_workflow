@@ -4,7 +4,7 @@
 사용: check_contract.py <지식 베이스 폴더>
 종료 코드 0 = 두 가지 모두 통과. 1 = 하나라도 실패.
 필수: 색인(INDEX.md), 메모 위치(raw/journal/).
-권장 항목(지식 베이스 안내 CLAUDE.md, 상황판 wiki/board.md, 규칙별 사례표 wiki/rule-cases.md, git 저장소)은 실패로 치지 않는다.
+권장 항목(지식 베이스 안내 CLAUDE.md, 맥락 요약 wiki/context.md, 상황판 wiki/board.md, 규칙별 사례표 wiki/rule-cases.md, git 저장소)은 실패로 치지 않는다.
 규칙과 틀은 플러그인 스킬 안에 있으므로 지식 베이스에 규칙 문서는 두지 않는다.
 """
 import pathlib, subprocess, sys
@@ -28,6 +28,7 @@ def main():
     ]
     recommended = [
         ("지식 베이스 안내", (kb / "CLAUDE.md").exists(), "CLAUDE.md"),
+        ("맥락 요약", (kb / "wiki" / "context.md").exists(), "wiki/context.md"),
         ("상황판", (kb / "wiki" / "board.md").exists(), "wiki/board.md"),
         ("규칙별 사례표", (kb / "wiki" / "rule-cases.md").exists(), "wiki/rule-cases.md"),
         ("git 저장소", is_git(kb), "git init"),
@@ -38,8 +39,10 @@ def main():
          "기록은 task-workflow:librarian 을 따른다는 안내가 없다"),
         ("상황판", kb / "wiki" / "board.md", "고친 날짜",
          "프로젝트 묶음 형식(어디까지·다음 할 일·막힌 것·고친 날짜)이 아니다"),
-        ("규칙별 사례표", kb / "wiki" / "rule-cases.md", "| 사례 | 한 줄 요약 | 관련 규칙 | 거스름 |",
-         "표 머리가 | 사례 | 한 줄 요약 | 관련 규칙 | 거스름 | 이 아니다"),
+        ("맥락 요약", kb / "wiki" / "context.md", "## 나 전체 결정",
+         "끝에 \"## 나 전체 결정\" 절이 없다"),
+        ("규칙별 사례표", kb / "wiki" / "rule-cases.md", "| 사례 | 한 줄 요약 | 관련 규칙 | 규칙과 관계 |",
+         "표 머리가 | 사례 | 한 줄 요약 | 관련 규칙 | 규칙과 관계 | 이 아니다"),
     ]
     ok = True
     print(f"점검 대상: {kb}")
