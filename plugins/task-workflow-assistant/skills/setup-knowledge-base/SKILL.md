@@ -31,7 +31,7 @@ description: 개인 지식 베이스(마크다운 git 저장소)를 플러그인
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/setup-knowledge-base/scripts/check_contract.py" <폴더>
    ```
    필수 세 가지 중 실패가 있으면, 초안의 해당 파일을 보여 주고 추가할지 묻는다. 기존 파일은 고치지 않는다. 사용자가 자기 규칙을 이미 갖고 있을 수 있어서다.
-   권장 항목(권한 파일 `.claude/settings.json`, 비서 지시 `CLAUDE.md`, 진행판 `wiki/board.md`, git 저장소)이 없으면 왜 필요한지 한 줄과 함께 추가를 제안한다. 권한 파일은 셸 명령과 세션 도구를 허용 목록에 두는 두 줄이다. 밤 사서는 클라우드 예약 실행으로 이 저장소에서 도는데, 클라우드 세션은 권한 무시 모드로 열리지 않아서 이 목록이 없으면 도구를 쓸 때마다 허용 창이 떠 정리가 멈춘다. `CLAUDE.md`는 "이 저장소에서 연 세션은 `task-workflow-assistant:run-assistant` 스킬을 따른다"는 짧은 지시만 둔다.
+   권장 항목(비서 지시 `CLAUDE.md`, 진행판 `wiki/board.md`, git 저장소)이 없으면 왜 필요한지 한 줄과 함께 추가를 제안한다. `CLAUDE.md`는 "이 저장소에서 연 세션은 `task-workflow-assistant:run-assistant` 스킬을 따른다"는 짧은 지시만 둔다.
 3. 아래 "설정 저장"을 한다.
 
 ## 설정 저장
