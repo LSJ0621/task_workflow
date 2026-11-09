@@ -3,6 +3,7 @@ id: D-{{DATE}}-01
 type: decision
 title: 지식 베이스를 task-workflow 초안으로 시작한다
 date: {{DATE_ISO}}
+scope: me
 domain: common
 status: active
 supersedes:

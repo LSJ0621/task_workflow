@@ -3,6 +3,7 @@ id: C-YYYYMMDD-NN
 type: case
 title:
 date: YYYY-MM-DD
+scope: me             # me | project:<이름>
 domain:
 status: active        # active | superseded
 supersedes:

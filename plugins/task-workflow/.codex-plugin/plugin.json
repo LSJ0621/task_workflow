@@ -1,6 +1,6 @@
 {
   "name": "task-workflow",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose context is analyzed into rules.",
   "author": {
     "name": "LSJ0621"

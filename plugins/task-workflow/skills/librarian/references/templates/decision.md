@@ -3,6 +3,7 @@ id: D-YYYYMMDD-NN
 type: decision
 title:
 date: YYYY-MM-DD
+scope: me             # me | project:<이름>
 domain: common
 status: active
 supersedes:

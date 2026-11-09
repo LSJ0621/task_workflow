@@ -35,6 +35,7 @@ description: 개인 지식 베이스(마크다운 git 저장소)를 이 스킬�
    필수 두 가지 중 실패가 있으면, 초안의 해당 파일을 보여 주고 추가할지 묻는다. 기존 파일은 고치지 않는다. 사용자가 자기 규칙을 이미 갖고 있을 수 있어서다.
    권장 항목이 없거나 `[경고]`가 나오면 왜 필요한지 한 줄과 함께 초안의 같은 파일을 보여 주고 추가나 수정을 제안한다.
    - 지식 베이스 안내 `CLAUDE.md`: 이 저장소가 지식 베이스라는 것, 여기서 연 세션은 프로젝트에 속하지 않는 대화(생활, 계획, 지식 베이스 관리)를 하는 곳이라는 것, 기록은 `task-workflow:librarian`을 따른다는 것만 둔다. 초안은 `assets/knowledge-base/CLAUDE.md`.
+   - 맥락 요약 `wiki/context.md`: 나에 대한 맥락을 도메인별로 한 줄씩, 끝에 나 전체 결정. 줄마다 원본 id가 있어 원본을 매번 다 읽지 않아도 된다. 없으면 사서가 정리 때 만든다. 초안은 `assets/knowledge-base/wiki/context.md`.
    - 상황판 `wiki/board.md`: 프로젝트마다 어디까지 왔는지 묶음 하나씩. 초안은 `assets/knowledge-base/wiki/board.md`.
    - 규칙별 사례표 `wiki/rule-cases.md`: 사서가 사례마다 관련 규칙을 적고, 맥락 분석이 이 표로 규칙을 정한다. 없으면 사서가 첫 정리 때 만든다. 초안은 `assets/knowledge-base/wiki/rule-cases.md`.
    - git 저장소: 기록을 지우지 않고 이력으로 남기기 위해서다.
