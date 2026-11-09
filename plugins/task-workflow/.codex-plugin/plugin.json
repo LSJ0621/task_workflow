@@ -1,7 +1,7 @@
 {
   "name": "task-workflow",
-  "version": "0.2.0",
-  "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base with criteria checks.",
+  "version": "0.3.0",
+  "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose context is analyzed into rules.",
   "author": {
     "name": "LSJ0621"
   },
@@ -10,7 +10,7 @@
   "interface": {
     "displayName": "Task Workflow",
     "shortDescription": "Understand, plan, verify",
-    "longDescription": "Eight independent skills for setting up project instructions, understanding tasks and data, maintaining work notes, coordinating agents, verifying results, connecting a personal knowledge base, recording user context, and checking work against its criteria.",
+    "longDescription": "Eight independent skills for setting up project instructions, understanding tasks and data, maintaining work notes, coordinating agents, verifying results, connecting a personal knowledge base, recording user context, and analyzing that context with the user to set rules.",
     "developerName": "LSJ0621",
     "category": "Developer Tools",
     "capabilities": [
