@@ -13,12 +13,15 @@
 
 ## 순서
 
+아래 명령의 `<사서 폴더>`는 이 파일의 한 단계 위 폴더(`skills/librarian`)다. 플러그인으로 설치된 환경이면 `${CLAUDE_PLUGIN_ROOT}/skills/librarian`, 플러그인 없이 저장소를 내려받은 환경(클라우드 밤 사서)이면 `<내려받은 저장소>/plugins/task-workflow-assistant/skills/librarian`이다.
+
+
 1. **읽기.** 지식 베이스에서 `git pull --ff-only`. 이 파일과 같은 폴더의 `records.md` 전체, `templates/`의 틀, `writing.md`를 읽는다. 형식은 전부 거기서 나온다. 지식 베이스에는 규칙 문서가 없다.
 2. **대상 고르기.** `raw/journal/`에서 끝에 `정리됨:` 줄이 없는 날짜 파일. 급한 한 건이면 그 줄만. 그리고 같은 날짜의 검수 결과(`raw/reviews/R-*`)에서 기준 칸이 "없음"인 발견 항목. 검수자가 기준 밖에서 잡아낸 문제는 사용자 피드백과 같은 재료다. 사용자가 보기 전에 기준이 되면 사용자가 볼 일이 줄어든다.
 3. **줄마다 정식 기록 만들기.**
    - 식별자는 스크립트로 받는다. 손으로 세면 겹친다.
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/skills/librarian/scripts/next_id.py" "$KNOWLEDGE_BASE_DIR" C   # C|D|X|R
+     python3 "<사서 폴더>/scripts/next_id.py" "$KNOWLEDGE_BASE_DIR" C   # C|D|X|R
      ```
    - `feedback` → 사례(`C-`) 틀. 사용자 말은 그대로. `related`에 검수 결과 id.
    - `decision` → 결정(`D-`) 틀. 선택지가 메모에 없으면 "미확인"이라고 적는다. 이유를 지어내지 않는다.
@@ -37,7 +40,7 @@
 6. **회귀 질문.** 새 결정마다 `tests/regression.md`에 질문 한 줄. "왜 X를 Y로 정했나?" 꼴이 기본이다.
 7. **불변 조건 점검.**
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/skills/librarian/scripts/check_invariants.py" "$KNOWLEDGE_BASE_DIR"
+   python3 "<사서 폴더>/scripts/check_invariants.py" "$KNOWLEDGE_BASE_DIR"
    ```
    문제가 나오면 커밋 전에 고친다. 고칠 수 없는 것(예: 출처 없는 기준)은 보고에 적고 넘어간다.
 8. **메모 파일 마감.** 처리한 날짜 파일 끝에 `정리됨: <만든 id들>` 한 줄. 메모 줄은 건드리지 않는다.
