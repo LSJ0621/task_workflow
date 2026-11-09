@@ -4,7 +4,7 @@
 사용: check_contract.py <지식 베이스 폴더>
 종료 코드 0 = 세 가지 모두 통과. 1 = 하나라도 실패.
 필수: 색인(INDEX.md), 메모 위치(raw/journal/), 기준 문서 위치(wiki/criteria/common.md).
-권장 항목(권한 파일, 비서 지시 CLAUDE.md, 진행판, git 저장소)은 실패로 치지 않는다.
+권장 항목(비서 지시 CLAUDE.md, 진행판, git 저장소)은 실패로 치지 않는다.
 규칙과 틀은 플러그인 스킬 안에 있으므로 지식 베이스에 규칙 문서가 있을 필요는 없다.
 """
 import pathlib, subprocess, sys
@@ -29,7 +29,6 @@ def main():
          "wiki/criteria/common.md 가 있어야 한다"),
     ]
     recommended = [
-        ("권한 파일(밤 사서 클라우드 실행용)", (kb / ".claude" / "settings.json").exists(), ".claude/settings.json"),
         ("비서 지시", (kb / "CLAUDE.md").exists(), "CLAUDE.md"),
         ("진행판", (kb / "wiki" / "board.md").exists(), "wiki/board.md"),
         ("git 저장소", is_git(kb), "git init"),
