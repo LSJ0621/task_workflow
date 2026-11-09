@@ -1,7 +1,7 @@
 {
   "name": "task-workflow",
-  "version": "0.1.11",
-  "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, and verify deliverables.",
+  "version": "0.2.0",
+  "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base with criteria checks.",
   "author": {
     "name": "LSJ0621"
   },

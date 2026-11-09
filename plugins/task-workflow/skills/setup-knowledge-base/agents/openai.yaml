@@ -1,0 +1,3 @@
+interface:
+  display_name: "지식 베이스 연결"
+  short_description: "개인 지식 베이스를 초안으로 만들거나 기존 저장소를 연결하고 계약을 점검합니다"

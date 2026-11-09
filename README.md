@@ -1,6 +1,6 @@
 # Task Workflow
 
-과제와 개인 프로젝트에서 사용할 독립적인 Codex·Claude Code 스킬 5개입니다.
+과제와 개인 프로젝트에서 사용할 독립적인 Codex·Claude Code 스킬 8개입니다.
 특정 대회, 기술 스택, 문서 형식, 제한시간을 고정하지 않습니다.
 
 | 스킬 | 사용하는 시점 |
@@ -10,9 +10,24 @@
 | `maintain-work-notes` | 논의·결정을 기록하고 문서와 필요한 Git 이력으로 정리·재개할 때 |
 | `collaborate-plan-execute` | 계획에 병렬·순차 작업을 반영하거나, 확정된 계획을 위임·통합할 때 |
 | `verify-work` | 실제 결과물이 요구사항을 충족하는지 검사하고 핵심 구현을 이해할 때 |
+| `setup-knowledge-base` | 개인 지식 베이스를 초안으로 만들거나 기존 저장소를 연결하고 점검할 때 |
+| `librarian` | 사용자 피드백·결정·맥락을 지식 베이스에 메모하고, 메모를 정식 기록과 기준 반영 제안으로 정리하고, 프로젝트 상황판을 고칠 때 |
+| `check-criteria` | 산출물을 지식 베이스의 기준 문서와 대조해 판정하고, 작업자가 고칠 수 있는 검수 결과를 받을 때 |
 
 각 스킬은 단독 사용이 가능합니다. 커스텀 에이전트, 외부 MCP 서버, 개인 API 키가 필요하지 않습니다.
 협업에는 실행 환경이 제공하는 내장 서브에이전트를 사용하고, 사용할 수 없으면 그 제약을 알린 뒤 순차 실행합니다.
+
+## 지식 베이스 (선택)
+
+`setup-knowledge-base`, `librarian`, `check-criteria` 세 스킬은 개인 지식 베이스(마크다운 git 저장소)가 있을 때만 씁니다.
+지식 베이스는 개발뿐 아니라 생활·취향·상황까지, 에이전트가 모르는 사용자 맥락과 기준을 쌓는 곳입니다. 일하는 방법은 스킬에 있고, 지식 베이스에는 기록만 둡니다.
+
+- 처음에는 새 세션에서 `setup-knowledge-base`를 호출합니다. 새로 만들지 기존 저장소를 연결할지 묻고, 위치를 Claude Code 설정(`~/.claude/settings.json`의 `env.KNOWLEDGE_BASE_DIR`)에 저장합니다. 사용자 설정 파일을 바꾸므로 실행 전에 알립니다.
+- 스킬이 지식 베이스에 기대는 것은 색인(`INDEX.md`), 메모 위치(`raw/journal/`), 기준 문서 위치(`wiki/criteria/common.md`) 세 가지뿐입니다. 나머지 구조는 바꿔도 됩니다.
+- 프로젝트 작업은 그 프로젝트 폴더에서 연 세션이 사용자와 직접 하고, 결과도 그 세션이 바로 알립니다. 작업 단위가 끝나면 그 세션이 지식 베이스 상황판(`wiki/board.md`)의 자기 프로젝트 묶음을 고칩니다.
+- 메모는 커밋만 하고, 하루 한 번 정리(`librarian` 정리 모드)가 정식 기록으로 옮기고 함께 push합니다. 기준 반영 제안은 사용자에게 묻고 승인받은 뒤 머지하고, 파일 이동 같은 구조 변경은 묻지 않고 머지합니다.
+- 지식 베이스를 찾지 못하면 `librarian`과 `check-criteria`는 아무것도 쓰지 않고 `setup-knowledge-base`를 안내합니다.
+- 실제 지식 베이스는 각자의 비공개 저장소에 둡니다. 비밀값과 고객 인프라 식별자는 지식 베이스에도 적지 않습니다.
 
 ## GitHub에서 설치
 
@@ -88,6 +103,8 @@ AGENTS.md의 기록 스킬 사용 안내는 프로젝트 지침이며 실행 훅
 - `plugins/task-workflow/.claude-plugin/plugin.json`: Claude Code manifest. 같은 이름·버전을 유지합니다.
 - `plugins/task-workflow/skills/`: 스킬 지침과 필요할 때만 읽는 참고 지침.
 - 각 스킬의 `agents/openai.yaml`: UI 표시 정보이며 커스텀 서브에이전트 정의가 아닙니다.
+- `plugins/task-workflow/skills/setup-knowledge-base/assets/knowledge-base/`: 지식 베이스 초안. 개인 내용은 없고 `{{...}}` 자리표시자를 `scripts/bootstrap.py`가 치환합니다.
+- `plugins/task-workflow/skills/librarian/references/`: 기록 형식·정리 절차·제안 브랜치 머지·글쓰기 규칙과 기록 틀. `scripts/`에 식별자 계산과 불변 조건 점검 스크립트가 있습니다.
 
 기록 스킬의 참조는 작업별로 나눕니다.
 - `reading.md`: 문서 탐색·재개·STATUS 해시 확인. 분석·검증도 이 읽기 규칙을 공유합니다.
