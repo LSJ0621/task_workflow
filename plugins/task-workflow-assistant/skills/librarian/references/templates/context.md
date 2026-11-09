@@ -3,7 +3,7 @@ id: X-YYYYMMDD-NN
 type: context
 title:
 date: YYYY-MM-DD
-domain: life          # life | work | tools | 그 외 INDEX.md 도메인
+domain: life          # 지식 베이스 INDEX.md 도메인 목록에 있는 이름
 status: active
 supersedes:
 superseded_by:

@@ -44,9 +44,11 @@ def main():
             if not src or not re.search(r"[CDXR]-\d{8}-\d{2}", src.group(1)):
                 problems.append(f"기준 {m.group(1)} 에 원본 출처 없음 ({p.name})")
     all_ids = set(ids) | crit_ids
-    skip = {"templates", "conventions.md", "journal"}
+    # 메모는 정식 기록 전 재료라 id 참조 점검에서 뺀다. 숨김 폴더(.git, .claude 등)도 뺀다.
+    skip = {"journal"}
     for p in kb.glob("**/*.md"):
-        if ".git" in p.parts or skip & set(p.parts) or p.name in skip: continue
+        rel = p.relative_to(kb).parts
+        if any(x.startswith(".") for x in rel) or skip & set(rel): continue
         body = p.read_text(encoding="utf-8")
         for ref in set(re.findall(r"\b([CDXR]-\d{8}-\d{2}|P-[A-Z]+-\d{2,})\b", body)):
             if ref not in all_ids and "{{" not in ref:
