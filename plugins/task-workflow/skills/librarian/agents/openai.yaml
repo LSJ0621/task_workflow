@@ -1,0 +1,3 @@
+interface:
+  display_name: "지식 베이스 사서"
+  short_description: "사용자 맥락·결정·피드백을 메모로 남기고 정식 기록과 기준 반영 제안으로 정리합니다"

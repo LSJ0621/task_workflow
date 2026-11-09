@@ -12,7 +12,8 @@ def main():
     ap.add_argument("--name", required=True)
     ap.add_argument("--owner", required=True)
     a = ap.parse_args()
-    src = pathlib.Path(__file__).resolve().parents[1].parents[1] / "templates" / "knowledge-base"
+    # 초안은 이 스킬 폴더의 assets/knowledge-base/ 에 있다 (scripts/ 의 한 단계 위가 스킬 폴더).
+    src = pathlib.Path(__file__).resolve().parents[1] / "assets" / "knowledge-base"
     if not src.is_dir():
         sys.exit(f"초안 폴더가 없다: {src}")
     dst = pathlib.Path(a.target).expanduser().resolve()
