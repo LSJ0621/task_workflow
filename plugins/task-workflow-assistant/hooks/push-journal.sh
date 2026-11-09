@@ -10,7 +10,10 @@
 #   3. 마지막 push 시도가 30분 넘게 지났다: 도장 파일 .git/journal-push-stamp가 없거나 1800초 이상 전이다.
 #      도장은 push를 시도할 때 갱신한다(성공·실패 무관). 실패를 매 응답마다 되풀이하지 않기 위해서다.
 #
-# 대상 폴더: stdin 훅 JSON의 "cwd". 없으면 $PWD.
+# 대상 폴더: stdin 훅 JSON의 "cwd"(없으면 $PWD)가 지식 베이스 모양이면 그 폴더.
+#   아니면 $KNOWLEDGE_BASE_DIR가 설정돼 있고 그 폴더가 지식 베이스 모양일 때 그 폴더.
+#   팀장·작업 점검 세션은 코드 저장소에서 열려 $KNOWLEDGE_BASE_DIR에 메모를 커밋하기 때문이다.
+#   둘 다 아니면 건너뛴다.
 # 네트워크를 쓰는 명령은 push와, 거부됐을 때의 pull --rebase뿐이다. fetch를 따로 하지 않는다.
 #
 # 시험용 환경 변수
@@ -30,36 +33,58 @@ say() {
 
 interval="${JOURNAL_PUSH_INTERVAL:-1800}"
 
+# 조건 1: 지식 베이스 모양인가. 아니면 이유를 전역 변수 why에 남기고 1을 돌려준다.
+why=""
+is_kb() {
+  local d="$1"
+  if [ -z "$d" ] || [ ! -d "$d" ]; then
+    why="폴더 없음 ($d)"; return 1
+  fi
+  if ! grep -q "불변 조건" "$d/README.md" 2>/dev/null; then
+    why="README.md에 '불변 조건' 없음 ($d)"; return 1
+  fi
+  if [ ! -f "$d/INDEX.md" ]; then
+    why="INDEX.md 없음 ($d)"; return 1
+  fi
+  if ! git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    why="git 저장소 아님 ($d)"; return 1
+  fi
+  return 0
+}
+
 # 대상 폴더 정하기
-dir="${JOURNAL_PUSH_DIR:-}"
-if [ -z "$dir" ]; then
+dir=""
+if [ -n "${JOURNAL_PUSH_DIR:-}" ]; then
+  # 시험용 강제. 이것만 본다.
+  dir="$JOURNAL_PUSH_DIR"
+  if ! is_kb "$dir"; then
+    say "건너뜀: $why"
+    exit 0
+  fi
+else
   input=""
   if [ ! -t 0 ]; then
     input="$(cat 2>/dev/null)"
   fi
-  dir="$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
-  if [ -z "$dir" ]; then
-    dir="$PWD"
+  cwd="$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+  if [ -z "$cwd" ]; then
+    cwd="$PWD"
   fi
-fi
-
-if [ ! -d "$dir" ]; then
-  say "건너뜀: 폴더 없음 ($dir)"
-  exit 0
-fi
-
-# 조건 1: 지식 베이스인가
-if ! grep -q "불변 조건" "$dir/README.md" 2>/dev/null; then
-  say "건너뜀: README.md에 '불변 조건' 없음"
-  exit 0
-fi
-if [ ! -f "$dir/INDEX.md" ]; then
-  say "건너뜀: INDEX.md 없음"
-  exit 0
-fi
-if ! git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  say "건너뜀: git 저장소 아님"
-  exit 0
+  if is_kb "$cwd"; then
+    dir="$cwd"
+  else
+    why_cwd="$why"
+    if [ -n "${KNOWLEDGE_BASE_DIR:-}" ] && is_kb "$KNOWLEDGE_BASE_DIR"; then
+      dir="$KNOWLEDGE_BASE_DIR"
+    else
+      if [ -n "${KNOWLEDGE_BASE_DIR:-}" ]; then
+        say "건너뜀: cwd는 $why_cwd. KNOWLEDGE_BASE_DIR는 $why"
+      else
+        say "건너뜀: $why_cwd. KNOWLEDGE_BASE_DIR 미설정"
+      fi
+      exit 0
+    fi
+  fi
 fi
 
 # 조건 2: push 안 된 raw/journal 커밋이 있는가
