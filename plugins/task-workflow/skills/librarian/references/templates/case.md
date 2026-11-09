@@ -8,13 +8,13 @@ status: active        # active | superseded | rejected(승격 기각)
 supersedes:
 superseded_by:
 tags: []
-related: []           # 관련 R-, D- id
+related: []           # 관련 C-, D-, X- id
 ---
 
 # <제목>
 
 ## 어떤 작업에서
-작업 설명 한 줄. 검수 결과가 있으면 `R-` id.
+작업 설명 한 줄.
 
 ## 에이전트가 한 것
 실제로 뭘 했나. 판단 없이 사실만.
