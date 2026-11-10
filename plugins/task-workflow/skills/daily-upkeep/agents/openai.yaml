@@ -1,0 +1,3 @@
+interface:
+  display_name: "매일 정리 순서"
+  short_description: "예약 작업의 메인 세션이 사서 정리, 자가 발전, 토요일 점검을 단계마다 서브에이전트에 넘깁니다"
