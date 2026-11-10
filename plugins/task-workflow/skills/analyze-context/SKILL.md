@@ -48,7 +48,7 @@ description: 지식 베이스에 쌓인 사례·결정·맥락을 지난 분석 
      이 메모가 결정 기록이 되면 사서가 다음 정리 때 `wiki/context.md`나 프로젝트 카드의 결정 요약에도 반영한다. 여기서 요약 문서를 직접 고치지 않는다.
    - 스킬을 고쳤으면 플러그인 저장소에서 브랜치를 만들어 고치고, 세 manifest(`plugin.json`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`)의 버전을 함께 올린다. 커밋, push, PR을 만들고 묻지 않고 머지한다(`gh pr merge`). 사용자가 분석 자리에서 정한 내용이라 머지가 따로 승인받을 일이 아니라서다.
    - 머지한 뒤 다시 설치한다. Claude Code는 `claude plugin marketplace update task-workflow-marketplace`와 `claude plugin update task-workflow@task-workflow-marketplace`, Codex는 `codex plugin marketplace upgrade task-workflow-marketplace`. 새 세션부터 바뀐 스킬이 보인다고 알린다.
-   - 전역 지침이나 응답 양식을 고쳤으면 그 파일만 고친다. 저장소가 아니라 커밋은 없다.
+   - 전역 지침이나 응답 양식을 고쳤으면 그 파일만 고친다. 그 파일이 git 저장소 안에 있으면(Claude Code는 `~/.claude`) 고친 파일만 그 저장소에 커밋한다. 메시지에 어떤 규칙을 왜 바꿨는지 쓴다. 규칙이 언제 바뀌었는지 남아야 다음 분석에서 사례가 규칙이 생기기 전 일인지 뒤 일인지 가릴 수 있어서다. 원격이 없는 저장소면 push는 하지 않는다.
 
 ## 규칙 관리 원칙
 
@@ -61,7 +61,7 @@ description: 지식 베이스에 쌓인 사례·결정·맥락을 지난 분석 
 
 분석 자리는 대화라서 3단계의 묶음 목록이 곧 본문이다. 넣기까지 끝나면 두 줄로 보고한다.
 - **완료**: 넣은 규칙마다 "규칙 한 줄 → 파일 절", PR 링크와 머지 여부, 재설치 결과, 남긴 메모 위치
-- **확인할 것**: 전역 지침·응답 양식처럼 저장소 밖 파일을 고쳤으면 그 파일. 없으면 "없음"
+- **확인할 것**: 전역 지침·응답 양식처럼 플러그인 저장소 밖 파일을 고쳤으면 그 파일과 커밋 해시. 없으면 "없음"
 
 ## 하지 말 것
 
