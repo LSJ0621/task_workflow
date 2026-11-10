@@ -115,6 +115,7 @@ AGENTS.md의 기록 스킬 사용 안내는 프로젝트 지침이며 실행 훅
 - `.claude-plugin/marketplace.json`: Claude Code 설치 목록 설정.
 - `plugins/task-workflow/.claude-plugin/plugin.json`: Claude Code manifest. 같은 이름·버전을 유지합니다.
 - `plugins/task-workflow/skills/`: 스킬 지침과 필요할 때만 읽는 참고 지침.
+- `plugins/task-workflow/hooks/`: 플러그인 훅 설정(`hooks.json`)과 훅이 돌리는 스크립트. 지금은 사용자 입력에 질문이 있으면 "물은 것만 답한다"는 규칙이 있는 곳을 알려 주는 훅 하나가 있습니다. 입력을 막지 않습니다.
 - 각 스킬의 `agents/openai.yaml`: UI 표시 정보이며 커스텀 서브에이전트 정의가 아닙니다.
 - `plugins/task-workflow/skills/setup-knowledge-base/assets/knowledge-base/`: 지식 베이스 초안. 개인 내용은 없고 `{{...}}` 자리표시자를 `scripts/bootstrap.py`가 치환합니다.
 - `plugins/task-workflow/skills/librarian/references/`: 기록 형식·정리 절차·구조 점검 절차·구조 변경 브랜치 머지·글쓰기 규칙과 기록 틀. `scripts/`에 식별자 계산과 불변 조건 점검 스크립트가 있습니다.
