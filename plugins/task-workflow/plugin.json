@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "task-workflow",
-  "version": "0.4.1",
-  "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose context is analyzed into rules.",
+  "version": "0.5.0",
+  "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose cases the agent turns into rules, with a weekly review report.",
   "author": {
     "name": "LSJ0621"
   },
@@ -21,7 +21,7 @@
       "interface": {
         "displayName": "Task Workflow",
         "shortDescription": "Understand, plan, verify",
-        "longDescription": "Eight independent skills for setting up project instructions, understanding tasks and data, maintaining work notes, coordinating agents, verifying results, connecting a personal knowledge base, recording user context, and analyzing that context with the user to set rules.",
+        "longDescription": "Ten skills for setting up project instructions, understanding tasks and data, maintaining work notes, coordinating agents, verifying results, connecting a personal knowledge base, recording user context, letting the agent revise rules from recorded cases, running the daily upkeep sequence, and writing a weekly review report.",
         "developerName": "LSJ0621",
         "category": "Developer Tools",
         "capabilities": [

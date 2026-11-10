@@ -1,13 +1,13 @@
 {
   "name": "task-workflow-marketplace",
-  "description": "Task Workflow skills for project guidance, task analysis, work notes, agent collaboration, verification, and a personal knowledge base.",
+  "description": "Task Workflow skills for project guidance, task analysis, work notes, agent collaboration, verification, and a personal knowledge base with self-revising rules and a weekly review.",
   "owner": {
     "name": "LSJ0621"
   },
   "plugins": [
     {
       "name": "task-workflow",
-      "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose context is analyzed into rules.",
+      "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose cases the agent turns into rules, with a weekly review report.",
       "source": "./plugins/task-workflow",
       "category": "productivity"
     }
