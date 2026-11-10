@@ -1,6 +1,6 @@
 # 구조 변경 브랜치 머지
 
-지식 베이스의 로컬 브랜치 `proposal/structure-YYYYMMDD`를 main에 들이는 방법이다. 정리 절차 10단계가 파일을 옮기거나 합친 뒤 읽는다.
+지식 베이스의 로컬 브랜치 `proposal/structure-YYYYMMDD`를 main에 들이는 방법이다. 구조 점검 절차(`structure.md`) 5단계가 파일을 옮기거나 합친 뒤 읽는다.
 아래 명령의 `$KB`는 지식 베이스 폴더다. 지식 베이스 체크아웃은 main 그대로 두고 그 자리에서 머지한다. 사용자의 다른 세션이 같은 폴더의 main에 메모를 커밋하고 있을 수 있어서다.
 
 ## 묻지 않고 머지한다
@@ -11,13 +11,15 @@
 ```bash
 git -C "$KB" pull --ff-only
 git -C "$KB" merge --no-ff --no-edit proposal/structure-YYYYMMDD \
-  -m "구조 변경 머지: proposal/structure-YYYYMMDD" -m "<무엇을 어디로 옮겼는지 한 문장>"
+  -m "구조 변경 머지: proposal/structure-YYYYMMDD" -m "<무엇을 어디로 왜 옮겼는지 한두 문장>"
 git -C "$KB" branch -d proposal/structure-YYYYMMDD
 git -C "$KB" push
 ```
 
+머지 커밋 메시지는 점검 보고가 읽는다. 그래서 무엇을 어디로 옮겼는지와 이유를 여기에 적는다.
 머지가 충돌하면 `git -C "$KB" merge --abort`로 되돌리고 브랜치를 남긴 채 보고에 적는다. 직접 풀지 않는다.
 
 ## 머지 뒤
 
+- 회귀 질문과 불변 조건을 확인한다. 방법은 `structure.md` 6단계다.
 - 카드 갱신은 하지 않는다. 다음 정리가 원본에서 다시 만든다. 두 세션이 같은 파일을 고치면 push가 충돌해서다.
