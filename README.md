@@ -122,8 +122,8 @@ AGENTS.md의 기록 스킬 사용 안내는 프로젝트 지침이며 실행 훅
 - `plugins/task-workflow/agents/`: Claude Code 서브에이전트 정의. `verifier`(결과물 검증)와 `evolve-report-checker`(자가 발전 아침 보고서 확인)가 있습니다.
 - 각 스킬의 `agents/openai.yaml`: UI 표시 정보이며 커스텀 서브에이전트 정의가 아닙니다.
 - `plugins/task-workflow/skills/setup-knowledge-base/assets/knowledge-base/`: 지식 베이스 초안. 개인 내용은 없고 `{{...}}` 자리표시자를 `scripts/bootstrap.py`가 치환합니다.
-- `plugins/task-workflow/skills/librarian/references/`: 메모 형식·기록 형식·정리 절차·구조 점검 절차·구조 변경 브랜치 머지·글쓰기 규칙과 기록 틀.
-- `plugins/task-workflow/skills/analyze-context/references/`: 자가 발전의 판단 방법, 추정 기록과 아침 보고서의 형식, 토요일 사용자 분석 절차. `scripts/`에 식별자 계산과 불변 조건 점검 스크립트가 있습니다.
+- `plugins/task-workflow/skills/librarian/references/`: 메모 형식·기록 형식·정리 절차·구조 점검 절차·구조 변경 브랜치 머지·글쓰기 규칙과 기록 틀. `scripts/`에 식별자 계산과 불변 조건 점검 스크립트가 있습니다.
+- `plugins/task-workflow/skills/analyze-context/references/`: 자가 발전의 판단 방법, 추정 기록과 아침 보고서의 형식, 토요일 사용자 분석 절차.
 - `plugins/task-workflow/skills/review-report/references/`: 점검 보고의 단계별 지침(분석, 검증, 만들기)과 단계 사이에 오가는 초안·판정의 형식. `assets/`에 보고서 HTML 틀이 있습니다.
 
 기록 스킬의 참조는 작업별로 나눕니다.
