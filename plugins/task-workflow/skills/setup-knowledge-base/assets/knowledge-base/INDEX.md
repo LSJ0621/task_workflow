@@ -14,7 +14,7 @@
 | 찾는 것 | 위치 |
 | :- | :- |
 | 나에 대한 맥락(일, 생활, 취향, 도구) | `wiki/context.md` 도메인별 절. 원본은 `raw/context/` |
-| 나 전체에 걸린 결정 | `wiki/context.md` "나 전체 결정" 절. 원본은 `raw/decisions/` |
+| 모든 프로젝트에 걸린 결정 | `wiki/context.md` "모든 프로젝트에 걸린 결정" 절. 원본은 `raw/decisions/` |
 | 프로젝트가 뭐고 어디 있나, 그 프로젝트의 유효한 결정 | `wiki/projects/<slug>.md` (프로젝트 카드) |
 | 프로젝트마다 어디까지 왔나 | `wiki/board.md` (상황판) |
 | 사례가 어느 규칙과 이어지나 | `wiki/rule-cases.md` (규칙별 사례표) |
@@ -25,7 +25,7 @@
 
 ## 폴더
 
-- `raw/` 원본. 추가만 한다. 사례·결정·맥락은 머리말에 `scope`(`me` 또는 `project:<이름>`)가 있다
+- `raw/` 원본. 추가만 한다. 사례·결정·맥락은 머리말에 `scope`(`me`는 모든 프로젝트, `project:<이름>`은 그 프로젝트)가 있다
   - `raw/journal/` 날짜별 메모
   - `raw/cases/` 실수 사례. 사용자 피드백 한 건이 한 파일
   - `raw/decisions/` 결정과 이유
@@ -33,9 +33,9 @@
   - `raw/reviews/` 주 1회 점검 보고서(`YYYY-MM-DD.html`). 에이전트가 한 주의 규칙 변경을 분석해 쓴 문서다. 머리말이 없다
   - `raw/archive/` 예전 구조의 기록. 새로 쓰지 않는다
 - `wiki/` 필요할 때 찾는 요약. 줄마다 원본 id가 있다
-  - `wiki/context.md` 맥락 요약. 도메인별 맥락과 나 전체 결정
+  - `wiki/context.md` 맥락 요약. 도메인별 맥락과 모든 프로젝트에 걸린 결정
   - `wiki/projects/` 프로젝트 카드. 프로젝트마다 한 장. 정체·위치·관련 기록과 유효한 결정
-  - `wiki/board.md` 상황판. 프로젝트마다 묶음 하나
+  - `wiki/board.md` 상황판. 프로젝트마다 묶음 하나. 그 프로젝트의 지침 후보도 여기 쌓인다
   - `wiki/rule-cases.md` 규칙별 사례표. 사례마다 관련 규칙과 규칙과 관계
 - `work/` 코드 저장소가 없는 작업의 산출물. 작업마다 폴더 하나
 - `tests/regression.md` 회귀 질문
