@@ -16,7 +16,7 @@ description: 지식 베이스에 쌓인 사례를 지난 실행 뒤부터 읽어
 | 이름 | 위치 | 여기 있는 것 |
 | :- | :- | :- |
 | 전역 설정 | `~/.claude` (로컬 git 저장소. 원격에 올리지 않는다) | 전역 지침 `CLAUDE.md`, 응답 양식 `output-styles/`, 상태 파일 `evolve/state.md` |
-| 플러그인 | `~/Desktop/dev/task-workflow` (고칠 때 쓰는 체크아웃. 설치된 사본이 아니다) | 스킬, 플러그인 훅(`plugins/task-workflow/hooks/hooks.json`), 서브에이전트 |
+| 플러그인 | 지식 베이스의 프로젝트 카드 `wiki/projects/task-workflow.md`의 "저장소" 줄에 적힌 위치 (고칠 때 쓰는 체크아웃. 설치된 사본이 아니다). 카드나 그 줄이 없으면 플러그인에 넣을 변경은 미루고 상태 파일 "판정 못 한 것"에 적는다 | 스킬, 플러그인 훅(`plugins/task-workflow/hooks/hooks.json`), 서브에이전트 |
 | 지식 베이스 | 사서와 같은 방법으로 찾는다([사서 SKILL.md](../librarian/SKILL.md) "지식 베이스 찾기" 절) | 사례·결정·맥락 원본과 규칙별 사례표. 규칙은 없다 |
 
 지식 베이스를 못 찾으면 아무것도 하지 않고 `setup-knowledge-base`를 안내한다.
