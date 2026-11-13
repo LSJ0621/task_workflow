@@ -174,6 +174,22 @@
   </div>
 </section>
 
+<section id="hypo">
+  <h2>원인 추정이 맞았나</h2>
+  <ul class="items">
+    <!-- 반복: 초안 "추정 점검"의 줄마다 하나. 줄 맨 앞의 말(아직 지켜봄, 맞는 것으로 봄, 틀려서 다시 봄, 되돌림, 신호에 맞는 사례가 있음)을 kind에 넣는다. 초안이 없음이고 검증도 맞음이면 <li class="none">세운 추정 없음</li>. -->
+    <li><span class="kind">{{RPT_HYPO_KIND}}</span>{{RPT_HYPO_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
+  </ul>
+</section>
+
+<section id="analysis">
+  <h2>사용자가 바라는 것 분석</h2>
+  <ul class="items">
+    <!-- 반복: 초안 "사용자 분석"의 줄마다 하나. 지난 분석에서 무엇이 달라졌나. 초안이 없음이고 검증도 맞음이면 <li class="none">이번 기간에 달라진 것 없음</li>. -->
+    <li>{{RPT_ANALYSIS_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
+  </ul>
+</section>
+
 <section id="history">
   <h2>규칙이 바뀌어 온 이력</h2>
   <!-- 반복: 초안 "규칙 이력"의 줄마다 .rule 하나, 그 안에서 날짜마다 li 하나. RPT_HIST_WHAT 은 생김, 고침, 지움 중 하나. 초안이 없음이고 검증도 맞음이면 <p class="none">없음</p>. -->

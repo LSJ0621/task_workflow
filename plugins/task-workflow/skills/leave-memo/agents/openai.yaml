@@ -1,0 +1,3 @@
+interface:
+  display_name: "메모 남기기"
+  short_description: "사용자 피드백·결정·맥락을 지식 베이스에 메모 한 줄로 남기고 상황판의 자기 프로젝트 묶음을 고칩니다"
