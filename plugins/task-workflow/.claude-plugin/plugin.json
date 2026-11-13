@@ -1,6 +1,6 @@
 {
   "name": "task-workflow",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Set up project guidance, understand tasks, preserve working context, coordinate agents, verify deliverables, and keep a personal knowledge base whose cases the agent turns into rules, with a weekly review report.",
   "author": {
     "name": "LSJ0621"
