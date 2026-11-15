@@ -7,6 +7,8 @@ wiki/context.md가 있으면 유효한 결정·맥락 id가 wiki/context.md나 w
 (머리말 snapshot: true 인 맥락은 그날의 상태라 건너뜀),
 규칙별 사례표(wiki/rule-cases.md)가 있으면 표 머리가 지금 형식이고 모든 사례가 표에 있음.
 status: draft 인 기록은 확인 전이라 "요약에 나와야 한다"와 "사례표에 있어야 한다" 검사에서 뺀다. 거꾸로 요약에 올라가 있으면 문제로 본다.
+status: draft 인 결정은 "결정에 이유 절" 검사에서도 뺀다. 뽑지 못한 기록은 요지가 "아직 없음"이라서다. active 가 되면 본다.
+이유 절은 예전 형식 "## 이유"와 새 틀의 "### 이유"("## 요지" 아래)를 둘 다 알아본다.
 머리말에 source 가 있으면 session 이나 memo 여야 한다. source: session 이면 session·range 가 "-"가 아니고
 본문에 <!-- extract:start --> 와 <!-- extract:end --> 가 하나씩 순서대로 있어야 한다.
 source 가 없는 예전 기록은 이 검사를 하지 않는다. omitted, memo 칸은 있어도 되고 없어도 된다.
@@ -31,6 +33,7 @@ NO_FRONTMATTER_DIRS = {"journal", "reviews"}   # raw/ 바로 아래에서 머리
 SOURCES = {"session", "memo"}
 EXTRACT_START = "<!-- extract:start -->"
 EXTRACT_END = "<!-- extract:end -->"
+REASON_RE = re.compile(r"^#{2,3} 이유", re.M)   # 예전 형식 "## 이유"와 새 틀의 "## 요지" 아래 "### 이유"
 
 def cells(line):
     return [c.strip() for c in line.strip().strip("|").split("|")]
@@ -110,7 +113,8 @@ def main():
             if fm.get("status") == "draft" and i:
                 draft_ids[i] = p.name
             problems += check_source(fm, text, p.name)
-        if fm.get("type") == "decision" and "## 이유" not in text:
+        # 확인 전(draft) 결정은 뽑지 못해 요지가 비어 있을 수 있어 이유 절을 보지 않는다. active가 되면 본다.
+        if fm.get("type") == "decision" and fm.get("status") != "draft" and not REASON_RE.search(text):
             problems.append(f"결정에 이유 절 없음: {p.name}")
         if fm.get("status") == "superseded" and not fm.get("superseded_by"):
             problems.append(f"superseded 인데 superseded_by 없음: {p.name}")
