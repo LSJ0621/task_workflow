@@ -36,7 +36,7 @@ def main():
     # 권장 항목이 있어도 지금 초안과 모양이 다르면 경고만 한다. 실패로 치지 않는다.
     shape = [
         ("지식 베이스 안내", kb / "CLAUDE.md", "task-workflow:librarian",
-         "기록은 task-workflow:librarian 을 따른다는 안내가 없다"),
+         "요약 올리기는 task-workflow:librarian 을 따른다는 안내가 없다"),
         ("상황판", kb / "wiki" / "board.md", "고친 날짜",
          "프로젝트 묶음 형식(어디까지·다음 할 일·막힌 것·고친 날짜)이 아니다"),
         ("맥락 요약", kb / "wiki" / "context.md", "## 모든 프로젝트에 걸린 결정",

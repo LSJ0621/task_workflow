@@ -1,0 +1,3 @@
+interface:
+  display_name: "기록 쓰기"
+  short_description: "메모가 가리키는 세션 기록에서 대화를 뽑아 사례·결정·맥락 원본 기록을 확인 전 상태로 만듭니다"
