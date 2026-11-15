@@ -6,6 +6,10 @@
 wiki/context.md가 있으면 유효한 결정·맥락 id가 wiki/context.md나 wiki/projects/*.md 어딘가에 있음
 (머리말 snapshot: true 인 맥락은 그날의 상태라 건너뜀),
 규칙별 사례표(wiki/rule-cases.md)가 있으면 표 머리가 지금 형식이고 모든 사례가 표에 있음.
+status: draft 인 기록은 확인 전이라 "요약에 나와야 한다"와 "사례표에 있어야 한다" 검사에서 뺀다. 거꾸로 요약에 올라가 있으면 문제로 본다.
+머리말에 source 가 있으면 session 이나 memo 여야 한다. source: session 이면 session·range 가 "-"가 아니고
+본문에 <!-- extract:start --> 와 <!-- extract:end --> 가 하나씩 순서대로 있어야 한다.
+source 가 없는 예전 기록은 이 검사를 하지 않는다. omitted, memo 칸은 있어도 되고 없어도 된다.
 --skip-rule-cases 를 주면 "모든 사례가 표에 있음" 검사만 건너뛴다. 사서 정리와 구조 점검이 쓴다.
 새 사례는 자가 발전(analyze-context)이 분류하기 전이라 표에 없는 게 맞아서다. 표 머리와 줄 형식은 그대로 본다.
 raw/reviews/ 의 점검 보고서(HTML)는 머리말과 식별자가 없는 파일이라 머리말 점검에서 뺀다(raw/archive/reviews/ 는 예전 기록이라 그대로 본다).
@@ -21,6 +25,9 @@ RELATIONS = {"규칙을 뒷받침", "규칙과 반대", "규칙 없음", "기각
 
 USAGE = "사용: check_invariants.py <지식 베이스> [--skip-rule-cases]"
 NO_FRONTMATTER_DIRS = {"journal", "reviews"}   # raw/ 바로 아래에서 머리말 없이 쌓는 폴더
+SOURCES = {"session", "memo"}
+EXTRACT_START = "<!-- extract:start -->"
+EXTRACT_END = "<!-- extract:end -->"
 
 def cells(line):
     return [c.strip() for c in line.strip().strip("|").split("|")]
@@ -34,6 +41,27 @@ def frontmatter(text):
                 k, v = line.split(":", 1); fm[k.strip()] = v.split("#")[0].strip()
     return fm
 
+def check_source(fm, text, name):
+    """머리말 source 칸과 그에 딸린 session·range·표시를 본다. source 가 없으면 예전 기록이라 보지 않는다."""
+    source = fm.get("source")
+    if not source:
+        return []
+    if source not in SOURCES:
+        return [f"source 값이 session이나 memo가 아님({source}): {name}"]
+    if source != "session":
+        return []
+    found = []
+    for k in ("session", "range"):
+        if fm.get(k, "").strip("\"'") in ("", "-"):
+            found.append(f"source: session 인데 {k} 없음: {name}")
+    body = re.sub(r"^---\n.*?\n---", "", text, count=1, flags=re.S)
+    starts, ends = body.count(EXTRACT_START), body.count(EXTRACT_END)
+    if starts != 1 or ends != 1:
+        found.append(f"source: session 인데 extract 표시가 하나씩이 아님(start {starts}개, end {ends}개): {name}")
+    elif body.index(EXTRACT_START) > body.index(EXTRACT_END):
+        found.append(f"extract 표시 순서가 뒤바뀜: {name}")
+    return found
+
 def main():
     options = [a for a in sys.argv[1:] if a.startswith("--")]
     paths = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -44,6 +72,7 @@ def main():
     problems = []
     ids = {}
     case_ids = set()
+    draft_ids = {}   # 확인 전(status: draft) 기록 id → 파일 이름. 요약에 올라가 있으면 안 된다
     summarize = {}   # 요약에 나와야 하는 유효한 결정·맥락 id → 파일 이름
     # 메모(raw/journal/)와 점검 보고서(raw/reviews/)는 머리말이 없는 파일이다.
     raw_files = [p for p in kb.glob("raw/**/*.md")
@@ -60,7 +89,8 @@ def main():
             if i in ids: problems.append(f"식별자 중복: {i} ({p.name}, {ids[i]})")
             ids[i] = p.name
             if not p.name.startswith(i): problems.append(f"파일명이 id로 시작하지 않음: {p.name}")
-            if fm.get("type") == "case": case_ids.add(i)
+            # 확인 전 사례는 자가 발전이 읽지 않으므로 사례표에 없어도 된다.
+            if fm.get("type") == "case" and fm.get("status") != "draft": case_ids.add(i)
         # 사례·결정·맥락만 scope와 요약을 본다. raw/archive/ 아래 예전 기록은 건너뛴다.
         rel = p.relative_to(kb).parts
         kind = fm.get("type") or (RECORD_DIRS.get(rel[1]) if len(rel) > 2 else None)
@@ -73,6 +103,9 @@ def main():
             if (kind in ("decision", "context") and fm.get("status") == "active" and i
                     and fm.get("snapshot", "").lower() != "true"):
                 summarize[i] = p.name
+            if fm.get("status") == "draft" and i:
+                draft_ids[i] = p.name
+            problems += check_source(fm, text, p.name)
         if fm.get("type") == "decision" and "## 이유" not in text:
             problems.append(f"결정에 이유 절 없음: {p.name}")
         if fm.get("status") == "superseded" and not fm.get("superseded_by"):
@@ -93,6 +126,8 @@ def main():
             shown |= set(ID_RE.findall(card.read_text(encoding="utf-8")))
         for i in sorted(set(summarize) - shown):
             problems.append(f"요약(wiki/context.md, wiki/projects/)에 없는 유효한 기록: {i}")
+        for i in sorted(set(draft_ids) & shown):
+            problems.append(f"확인 전(draft) 기록이 요약(wiki/context.md, wiki/projects/)에 올라가 있음: {i}")
     table = kb / "wiki" / "rule-cases.md"
     rows = 0
     if table.is_file():
