@@ -561,5 +561,56 @@ class FindListTest(TempProjects):
         self.assertEqual(run(["list", "--session", "없는-세션"], projects=self.projects)[0], 2)
 
 
+class PendingTest(TempProjects):
+    """지식 베이스도 지어낸 것이다. 메모 줄과 기록의 내용은 세지 않고 수만 센다."""
+
+    MEMO = "%s | context | 지어낸 작업 | 지어낸 내용. 사용자 말 없음 | - | session:-"
+
+    def setUp(self):
+        TempProjects.setUp(self)
+        self.kb = os.path.join(self.tmp, "kb")
+        for folder in ("journal", "cases", "decisions", "context"):
+            os.makedirs(os.path.join(self.kb, "raw", folder))
+
+    def journal(self, name, lines):
+        with open(os.path.join(self.kb, "raw", "journal", name), "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+    def record(self, folder, name, status, body=""):
+        with open(os.path.join(self.kb, "raw", folder, name), "w", encoding="utf-8") as handle:
+            handle.write("---\nid: %s\nstatus: %s\nsource: memo\n---\n# 제목\n%s" % (name[:13], status, body))
+
+    def pending(self):
+        code, out, err = run(["pending", self.kb], projects=self.projects)
+        self.assertEqual(code, 0, err)
+        return [row.split("\t") for row in out.strip().split("\n")]
+
+    def test_nothing_pending(self):
+        self.journal("2026-01-05.md", [self.MEMO % "10:00", "정리됨: X-20260105-01"])
+        self.record("context", "X-20260105-01-fake.md", "active")
+        self.assertEqual(self.pending(), [["합계", "메모 0", "draft 0"]])
+
+    def test_file_without_done_line_counts_every_line(self):
+        self.journal("2026-01-05.md", [self.MEMO % "10:00", "", self.MEMO % "11:00"])
+        self.assertEqual(self.pending(), [["메모", "raw/journal/2026-01-05.md", "2"], ["합계", "메모 2", "draft 0"]])
+
+    def test_only_lines_after_last_done_line_count(self):
+        self.journal("2026-01-05.md", [
+            self.MEMO % "10:00", "정리됨: X-20260105-01",
+            self.MEMO % "11:00", self.MEMO % "12:00", "정리됨: 없음",
+            self.MEMO % "13:00"])
+        self.journal("2026-01-06.md", [self.MEMO % "09:00", "정리됨: 없음"])
+        self.assertEqual(self.pending(), [["메모", "raw/journal/2026-01-05.md", "1"], ["합계", "메모 1", "draft 0"]])
+
+    def test_draft_records_are_counted_by_header_only(self):
+        self.record("cases", "C-20260105-01-fake.md", "draft")
+        self.record("decisions", "D-20260105-01-fake.md", "active", "status: draft 라는 글자가 본문에 있다\n")
+        self.record("context", "X-20260105-02-fake.md", "superseded")
+        self.assertEqual(self.pending(), [["draft", "raw/cases/C-20260105-01-fake.md"], ["합계", "메모 0", "draft 1"]])
+
+    def test_folder_that_is_not_a_knowledge_base(self):
+        self.assertEqual(run(["pending", self.tmp], projects=self.projects)[0], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

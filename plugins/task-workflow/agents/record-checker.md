@@ -21,7 +21,7 @@ color: yellow
 
 ## 기록마다 볼 것
 
-**(가) `verify`가 통과하는가.** 머리말의 `session`, `range`, `omitted`로 다시 뽑은 글과 기록의 표시(`<!-- extract:start -->`, `<!-- extract:end -->`) 사이가 글자 단위로 같은지 스크립트가 본다. 종료 코드 0이 통과다.
+**(가) `verify`가 통과하는가.** 머리말의 `session`, `range`, `omitted`로 다시 뽑은 글과 기록의 표시(`<!-- extract:start -->`, `<!-- extract:end -->`) 사이가 글자 단위로 같은지 스크립트가 본다. 종료 코드 0이 통과다. 통과하면 `통과`, 기록 파일, 설명이 탭으로 나뉘어 한 줄 나온다. 통과하지 못하면 이유가 표준 오류에 나오고 종료 코드가 2(세션 기록이나 uuid를 못 찾음), 3(범위 안에 스크립트가 모르는 형식이 있음), 5(표시 사이가 다시 뽑은 글과 다름) 가운데 하나다.
 
 ```bash
 python3 "<스크립트>" verify "<기록 파일>"
@@ -33,8 +33,12 @@ python3 "<스크립트>" verify "<기록 파일>"
 - 지적의 원인이 될 행동이 범위 앞에 잘려 있지 않은가. 범위 앞뒤를 목록으로 본다. 지적받은 답을 내기 전에 읽은 파일이나 부른 스킬이 범위 바로 앞에 있으면 잘린 것이다.
 
 ```bash
-python3 "<스크립트>" list --session <세션 id> --around <HH:MM> --window <분>
+python3 "<스크립트>" list --session <세션 id> --around <HH:MM> --date <YYYY-MM-DD> --window <분>
 ```
+
+- 묶음마다 한 줄이 나온다. 칸은 탭으로 나뉘고 번호(세션 기록 파일의 줄 번호), 시각(`MM-DD HH:MM`), 누구(사용자·에이전트·도구), 첫 80자, uuid 순서다. `--window`를 안 주면 앞뒤 30분이다.
+- 시각과 날짜는 메모 줄의 시각과 메모 파일의 날짜를 준다. 메모의 내용 칸이 `그때: YYYY-MM-DD HH:MM`으로 시작하면 그 날짜와 시각을 준다. 그 말이 나온 때가 메모를 적은 때와 다른 메모다.
+- 머리말 `range`의 두 uuid가 목록의 어느 줄인지 찾아 그 앞과 뒤를 본다. 같은 uuid가 다른 세션 기록 파일에도 있을 수 있으니 머리말 `session`의 세션에서만 본다.
 
 범위가 필요보다 조금 넓은 것은 불일치가 아니다. 메모가 말한 일이 빠졌거나 원인이 될 행동이 잘렸을 때만 불일치다.
 
@@ -44,7 +48,7 @@ python3 "<스크립트>" list --session <세션 id> --around <HH:MM> --window <�
 
 **(마) 비밀값, 자격 정보, 고객 인프라 식별자가 기록에 남아 있지 않은가.** 기록 파일 전체(머리말, 있었던 일, 요지)를 본다. 키·토큰·비밀번호 모양(`sk-`, `AKIA`, `ghp_`, `-----BEGIN`, `password=`, `token=` 같은 것), 계정 ID, 네트워크·DB 식별자, 프로필 이름이 있는지 본다. 스크립트가 걸러 내는 모양에 들지 않는 것도 있으므로 글을 읽고 판단한다.
 
-`source: memo`인 기록은 세션 기록에서 뽑은 것이 아니다. (가)와 (라)를 보지 않는다. (나)는 메모 줄의 있었던 일과 `사용자 말:`이 `## 있었던 일`에 그대로 옮겨졌는지로 본다. (다)와 (마)는 같다.
+`source: memo`인 기록은 세션 기록에서 뽑은 것이 아니다. 스크립트의 `verify`는 이런 기록을 대조 없이 통과시키므로 `verify`의 통과를 근거로 삼지 않는다. (가)와 (라) 대신 메모 줄과 `## 있었던 일`이 같은지를 본다. 메모 줄의 있었던 일 문장과 `사용자 말:`이 빠지거나 바뀌거나 보태진 곳 없이 그대로 옮겨졌는가, 표시(`<!-- extract:start -->`, `<!-- extract:end -->`)가 없는가다. 다르면 `범위 불일치`로 적고 어느 말이 다른지를 한 줄로 붙인다. (나)는 이것으로 대신한다. (다)와 (마)는 같다.
 
 ## 스크립트 대조를 하는 방법
 
@@ -56,32 +60,47 @@ python3 "<스크립트>" list --session <세션 id> --around <HH:MM> --window <�
 python3 -c '
 import sys, json, glob, os
 sid, first, last = sys.argv[1:4]
+paths = glob.glob(os.path.expanduser("~/.claude/projects/*/" + sid + ".jsonl"))
+paths.sort(key=lambda p: (-os.path.getsize(p), p))
 on = False
-for path in glob.glob(os.path.expanduser("~/.claude/projects/*/" + sid + ".jsonl")):
-    for line in open(path, encoding="utf-8"):
-        d = json.loads(line)
-        u = d.get("uuid")
-        if u == first: on = True
-        if on:
-            print("==", u, d.get("type"), d.get("timestamp"), "meta" if d.get("isMeta") else "")
-            c = (d.get("message") or {}).get("content")
-            if isinstance(c, str): print("  text:", c)
-            for b in c if isinstance(c, list) else []:
-                t = b.get("type")
-                if t == "text": print("  text:", b.get("text"))
-                elif t == "tool_use": print("  tool_use:", b.get("name"), json.dumps(b.get("input"), ensure_ascii=False)[:600])
-                else: print("  (" + str(t) + ")")
-        if u == last: on = False
+for line in open(paths[0], encoding="utf-8") if paths else []:
+    if not line.strip(): continue
+    d = json.loads(line)
+    u = d.get("uuid")
+    if u == first: on = True
+    if on:
+        a = d.get("attachment") if isinstance(d.get("attachment"), dict) else {}
+        o = d.get("origin") or a.get("origin")
+        print("==", u, d.get("type"), a.get("type") or d.get("subtype") or "", d.get("timestamp"),
+              "origin:" + str(o.get("kind") if isinstance(o, dict) else o),
+              "meta" if d.get("isMeta") or a.get("isMeta") else "", "sidechain" if d.get("isSidechain") else "")
+        c = (d.get("message") or {}).get("content") if d.get("type") in ("user", "assistant") else a.get("prompt")
+        if isinstance(c, str): print("  text:", c)
+        for b in c if isinstance(c, list) else []:
+            t = b.get("type")
+            if t == "text": print("  text:", b.get("text"))
+            elif t == "tool_use": print("  tool_use:", b.get("name"), json.dumps(b.get("input"), ensure_ascii=False)[:600])
+            else: print("  (" + str(t) + ")")
+    if u == last: on = False
 ' <세션 id> <첫 줄 uuid> <끝 줄 uuid>
 ```
 
-- 이 명령은 도구 결과와 생각 과정의 내용을 찍지 않고 종류 이름만 찍는다. 기록에도 싣지 않는 것이라서다. 줄이 이상해 보이면 그 uuid의 줄을 같은 방법으로 통째로 찍어 본다.
-- 시각은 세션 기록에서는 UTC이고 기록에서는 지역 시각일 수 있다. 시각 숫자가 아니라 순서와 내용으로 댄다.
+- 같은 세션 id의 파일이 두 폴더에 있으면 더 큰 파일을 읽는다. 스크립트도 그 파일을 읽는다.
+- 줄마다 머리에 uuid, 줄 종류(`type`), 딸린 종류, 시각, `origin:`이 찍힌다. 어느 줄이 사용자가 친 글인지는 이것으로 가린다.
+  - 사용자가 친 글은 `type`이 `user`이고 `origin:human`인 줄이다.
+  - 에이전트가 일하는 중에 사용자가 친 글은 `type`이 `attachment`이고 딸린 종류가 `queued_command`이며 `origin:human`인 줄이다. 이것도 기록에 사용자 말로 실려야 한다.
+  - `type`이 `user`여도 `origin:human`이 아닌 줄은 사용자가 친 글이 아니다. 도구 결과, 시스템이 끼워 넣은 알림, 다른 세션이나 작업 알림이 보낸 글이다. `meta`가 붙은 줄(스킬 본문 같은 것)도 같다. 기록에 없는 것이 맞다.
+  - `origin:human`인 글 안에서도 `<system-reminder>`처럼 꺾쇠 이름표로 싸인 묶음은 시스템이 끼워 넣은 것이라 기록에 없는 것이 맞다.
+  - 사용자가 친 슬래시 명령은 `<command-name>` 이름표로 싸여 있다. 기록에는 `/이름 인자` 한 줄로 실린다.
+  - 에이전트의 글과 도구 호출은 `type`이 `assistant`인 줄이다. `sidechain`이 붙은 줄은 서브에이전트 안쪽 대화라 기록에 없는 것이 맞다.
+- 이 명령은 도구 결과와 생각 과정, 그림의 내용을 찍지 않고 종류 이름만 찍는다. 기록에도 싣지 않는 것이라서다. 그림(`(image)`)은 기록에 `[이미지]`로 실린다. 줄이 이상해 보이면 그 uuid의 줄을 같은 방법으로 통째로 찍어 본다.
+- 시각은 세션 기록에서는 UTC이고 기록에서는 이 컴퓨터의 시간대다. 시각 숫자가 아니라 순서와 내용으로 댄다.
+- 서브에이전트의 기록(세션 폴더 아래 더 깊은 폴더의 파일)은 읽지 않는다. 스크립트도 읽지 않는다. 기록에는 메인 세션이 서브에이전트를 부른 `Agent:` 줄만 있으면 된다.
 
 대어 보는 것은 넷이다.
 
 - 빠진 말: 사용자가 친 글과 에이전트가 사용자에게 보인 글이 기록에 모두 있는가. 시스템이 끼워 넣은 알림과 훅 출력은 기록에 없는 것이 맞다.
-- 빠진 도구 호출: 범위 안의 도구 호출이 기록의 도구 목록에 모두 있는가. 도구마다 실리는 칸(Skill은 스킬 이름, Read·Edit·Write는 파일 경로, Bash는 `description`, Agent는 `subagent_type`과 `description`, 그 밖은 도구 이름)이 맞는가.
+- 빠진 도구 호출: 범위 안의 도구 호출이 기록의 도구 목록에 모두 있는가. 도구마다 실리는 칸(Skill은 스킬 이름, Read·Edit·Write는 파일 경로, Bash는 `description`, Agent는 `subagent_type | description`, 그 밖은 도구 이름)이 맞는가. 기록에서는 도구 호출마다 `**도구** (HH:MM)` 머리줄이 다시 나오고 그 아래 `- ` 줄에 호출이 적힌다.
 - 바뀐 순서: 묶음의 순서가 세션 기록의 순서와 같은가.
 - 잘린 곳: 글이 중간에서 끊기지 않았는가. `omitted`에 적힌 uuid의 줄만 `> [비밀값이 있어 뺌]`으로 바뀌어 있는가.
 
@@ -94,9 +113,9 @@ for path in glob.glob(os.path.expanduser("~/.claude/projects/*/" + sid + ".jsonl
 | 판정 | 언제 | 같이 적는 것 |
 | :- | :- | :- |
 | `통과` | (가)~(마)에 걸린 것이 없다 | 없음 |
-| `범위 불일치` | (나)에 걸렸다. 머리말의 `session`이나 `range`가 가리키는 곳을 찾을 수 없을 때(`verify` 종료 코드 2)도 여기에 든다 | 어떻게 고칠지 한 줄. 어느 uuid부터 어느 uuid까지로 잡아야 하는지 |
+| `범위 불일치` | (나)에 걸렸다. 머리말의 `session`이나 `range`가 가리키는 곳을 찾을 수 없을 때(`verify` 종료 코드 2)도 여기에 든다. `source: memo`인 기록의 `## 있었던 일`이 메모 줄과 다를 때도 여기에 든다 | 어떻게 고칠지 한 줄. 어느 uuid부터 어느 uuid까지로 잡아야 하는지. `source: memo`면 어느 말이 메모와 다른지 |
 | `요지 불일치` | (다)에 걸렸다 | 어느 문장인지. 절 이름과 몇째 문장인지로 가리킨다 |
-| `스크립트 불일치` | (라)에 걸렸다. 표시 사이가 다시 뽑은 글과 다를 때(`verify` 종료 코드 5)도 여기에 든다 | 무엇이 다른지. 어느 uuid의 무엇이 빠졌거나 바뀌었는지 |
+| `스크립트 불일치` | (라)에 걸렸다. 표시 사이가 다시 뽑은 글과 다를 때(`verify` 종료 코드 5)와 범위 안에 스크립트가 모르는 형식이 있을 때(`verify` 종료 코드 3)도 여기에 든다 | 무엇이 다른지. 어느 uuid의 무엇이 빠졌거나 바뀌었는지 |
 | `비밀값` | (마)에 걸렸다 | 어느 줄인지. 기록 파일의 줄 번호나 그 줄의 uuid로 가리킨다 |
 
 - 여러 가지에 걸렸으면 `비밀값`, `스크립트 불일치`, `범위 불일치`, `요지 불일치` 순서로 앞의 것 하나를 판정으로 쓴다. 나머지는 같은 줄 끝에 "그 밖에:"로 짧게 덧붙인다. 만든 쪽이 한 번에 고칠 수 있게 하기 위해서다.

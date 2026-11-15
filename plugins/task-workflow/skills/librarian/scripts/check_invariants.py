@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""지식 베이스의 불변 조건을 점검한다. 사용: check_invariants.py <지식 베이스> [--skip-rule-cases]
+"""지식 베이스의 불변 조건을 점검한다. 사용: check_invariants.py <지식 베이스> [--skip-rule-cases] [--skip-summary]
 종료 코드 0 = 통과. 점검: 식별자 중복 없음, 모든 원본에 id·date·status 머리말, 결정에 이유 절,
 본문의 모든 C-·D-·X-·R- id 참조가 존재, superseded 쌍 일관,
 사례·결정·맥락에 scope(me 또는 project:<이름>) 있음(raw/archive/ 아래는 예전 기록이라 건너뜀),
@@ -10,8 +10,11 @@ status: draft 인 기록은 확인 전이라 "요약에 나와야 한다"와 "�
 머리말에 source 가 있으면 session 이나 memo 여야 한다. source: session 이면 session·range 가 "-"가 아니고
 본문에 <!-- extract:start --> 와 <!-- extract:end --> 가 하나씩 순서대로 있어야 한다.
 source 가 없는 예전 기록은 이 검사를 하지 않는다. omitted, memo 칸은 있어도 되고 없어도 된다.
---skip-rule-cases 를 주면 "모든 사례가 표에 있음" 검사만 건너뛴다. 사서 정리와 구조 점검이 쓴다.
+--skip-rule-cases 를 주면 "모든 사례가 표에 있음" 검사만 건너뛴다. 사례를 분류하기 전에 도는 점검(새벽 1단계 기록, 구조 점검, 사용자 분석)이 쓴다.
 새 사례는 자가 발전(analyze-context)이 분류하기 전이라 표에 없는 게 맞아서다. 표 머리와 줄 형식은 그대로 본다.
+--skip-summary 를 주면 "유효한 결정·맥락이 요약이나 카드에 나온다" 검사만 건너뛴다. 정리(4단계)보다 먼저 도는 점검(새벽 1단계 기록, 3단계 분석)이 쓴다.
+새로 확정된 결정·맥락은 정리가 올리기 전이라 요약에 없는 게 맞아서다. draft 기록이 요약에 올라가 있는지는 그대로 본다.
+두 옵션은 함께 줄 수 있다. 옵션 없이 돌리면 전부 본다. 정리(4단계)가 그렇게 돌린다.
 raw/reviews/ 의 점검 보고서(HTML)는 머리말과 식별자가 없는 파일이라 머리말 점검에서 뺀다(raw/archive/reviews/ 는 예전 기록이라 그대로 본다).
 P-로 시작하는 옛 기준 항목 id는 없어진 기준 문서의 이름이라 지난 기록에 남아 있어도 점검하지 않는다."""
 import pathlib, re, sys
@@ -23,7 +26,7 @@ RECORD_DIRS = {"cases": "case", "decisions": "decision", "context": "context"}
 TABLE_HEAD = ["사례", "한 줄 요약", "관련 규칙", "규칙과 관계"]
 RELATIONS = {"규칙을 뒷받침", "규칙과 반대", "규칙 없음", "기각"}
 
-USAGE = "사용: check_invariants.py <지식 베이스> [--skip-rule-cases]"
+USAGE = "사용: check_invariants.py <지식 베이스> [--skip-rule-cases] [--skip-summary]"
 NO_FRONTMATTER_DIRS = {"journal", "reviews"}   # raw/ 바로 아래에서 머리말 없이 쌓는 폴더
 SOURCES = {"session", "memo"}
 EXTRACT_START = "<!-- extract:start -->"
@@ -65,9 +68,10 @@ def check_source(fm, text, name):
 def main():
     options = [a for a in sys.argv[1:] if a.startswith("--")]
     paths = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if len(paths) != 1 or set(options) - {"--skip-rule-cases"}:
+    if len(paths) != 1 or set(options) - {"--skip-rule-cases", "--skip-summary"}:
         sys.exit(USAGE)
     skip_rule_cases = "--skip-rule-cases" in options
+    skip_summary = "--skip-summary" in options
     kb = pathlib.Path(paths[0]).expanduser()
     problems = []
     ids = {}
@@ -124,7 +128,7 @@ def main():
         shown = set(ID_RE.findall(summary.read_text(encoding="utf-8")))
         for card in (kb / "wiki" / "projects").glob("*.md"):
             shown |= set(ID_RE.findall(card.read_text(encoding="utf-8")))
-        for i in sorted(set(summarize) - shown):
+        for i in sorted(set(summarize) - shown) if not skip_summary else []:
             problems.append(f"요약(wiki/context.md, wiki/projects/)에 없는 유효한 기록: {i}")
         for i in sorted(set(draft_ids) & shown):
             problems.append(f"확인 전(draft) 기록이 요약(wiki/context.md, wiki/projects/)에 올라가 있음: {i}")
@@ -152,7 +156,8 @@ def main():
                 problems.append(f"규칙별 사례표에 없는 사례: {c}")
     print(f"점검 대상: {kb} · 원본 {len(raw_files)}개, 점검 보고서 {len(reports)}개, 규칙별 사례표 "
           + (f"{rows}줄" if table.is_file() else "없음")
-          + (" (표에 없는 사례 검사는 건너뜀)" if skip_rule_cases else ""))
+          + (" (표에 없는 사례 검사는 건너뜀)" if skip_rule_cases else "")
+          + (" (요약에 없는 기록 검사는 건너뜀)" if skip_summary else ""))
     for x in problems: print("  [문제]", x)
     print("  통과" if not problems else f"  문제 {len(problems)}건")
     sys.exit(0 if not problems else 1)

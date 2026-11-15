@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """세션 기록(jsonl)에서 정해진 범위를 그대로 뽑는다.
 
-명령: find, list, extract, verify, confirm
+명령: find, list, extract, verify, confirm, pending
 종료 코드: 0 성공, 1 사용법 오류, 2 세션이나 uuid를 못 찾음, 3 모르는 형식,
           4 비밀값 모양, 5 verify 불일치
 
 세션 기록은 <projects-dir>/*/<세션 id>.jsonl 이다. 폴더 이름이 아니라 세션 id로 찾는다.
+pending은 세션 기록을 읽지 않는다. 지식 베이스에 기록할 것이 남았는지만 센다.
 파이썬 표준 라이브러리만 쓴다.
 """
 
@@ -28,6 +29,8 @@ MARK_START = "<!-- extract:start -->"
 MARK_END = "<!-- extract:end -->"
 OMITTED_TEXT = "> [비밀값이 있어 뺌]"
 IMAGE_TEXT = "[이미지]"
+DONE_PREFIX = "정리됨:"  # 메모 파일에서 여기까지 기록했다는 줄. 한 파일에 여러 개 있을 수 있다
+RECORD_DIRS = ("cases", "decisions", "context")
 
 # ---------------------------------------------------------------------------
 # 아는 종류 목록. 여기에 없는 종류가 범위 안에 있으면 종료 코드 3을 낸다.
@@ -831,6 +834,51 @@ def cmd_confirm(args):
 
 
 # ---------------------------------------------------------------------------
+# pending
+# ---------------------------------------------------------------------------
+
+def pending_memo_lines(text):
+    """마지막 `정리됨:` 줄 뒤에 있는 메모 줄 수. 그 줄이 없으면 파일의 메모 줄 전부다."""
+    count = 0
+    for line in text.split("\n"):
+        line = line.strip()
+        if line.startswith(DONE_PREFIX):
+            count = 0
+        elif line:
+            count += 1
+    return count
+
+
+def cmd_pending(args):
+    base = os.path.expanduser(args.knowledge_base)
+    journal = os.path.join(base, "raw", "journal")
+    if not os.path.isdir(journal):
+        raise ExtractError(EXIT_USAGE, "지식 베이스가 아님(raw/journal 없음): %s" % args.knowledge_base)
+    memo_total = 0
+    for name in sorted(os.listdir(journal)):
+        if not (name.endswith(".md") and name[:1].isdigit()):
+            continue
+        count = pending_memo_lines(read_record(os.path.join(journal, name)))
+        if count:
+            sys.stdout.write("메모\traw/journal/%s\t%d\n" % (name, count))
+            memo_total += count
+    draft_total = 0
+    for folder in RECORD_DIRS:
+        path = os.path.join(base, "raw", folder)
+        if not os.path.isdir(path):
+            continue
+        for name in sorted(os.listdir(path)):
+            if not name.endswith(".md"):
+                continue
+            text = read_record(os.path.join(path, name))
+            if front_matter_span(text) and parse_front_matter(text).get("status") == "draft":
+                sys.stdout.write("draft\traw/%s/%s\n" % (folder, name))
+                draft_total += 1
+    sys.stdout.write("합계\t메모 %d\tdraft %d\n" % (memo_total, draft_total))
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
 # 명령줄
 # ---------------------------------------------------------------------------
 
@@ -874,6 +922,10 @@ def build_parser():
     confirm = commands.add_parser("confirm", parents=[shared], help="verify가 통과한 기록을 active로 바꾼다")
     confirm.add_argument("records", nargs="+")
     confirm.set_defaults(run=cmd_confirm)
+
+    pending = commands.add_parser("pending", parents=[shared], help="정리 안 된 메모 줄 수와 draft 기록 수를 찍는다")
+    pending.add_argument("knowledge_base", help="지식 베이스 폴더")
+    pending.set_defaults(run=cmd_pending)
     return parser
 
 
@@ -881,7 +933,7 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "run", None):
-        parser.error("명령이 없음 (find, list, extract, verify, confirm)")
+        parser.error("명령이 없음 (find, list, extract, verify, confirm, pending)")
     try:
         return args.run(args)
     except ExtractError as error:
