@@ -18,6 +18,8 @@ source 가 없는 예전 기록은 이 검사를 하지 않는다. omitted, memo
 새로 확정된 결정·맥락은 정리가 올리기 전이라 요약에 없는 게 맞아서다. draft 기록이 요약에 올라가 있는지는 그대로 본다.
 두 옵션은 함께 줄 수 있다. 옵션 없이 돌리면 전부 본다. 정리(4단계)가 그렇게 돌린다.
 raw/reviews/ 의 점검 보고서(HTML)는 머리말과 식별자가 없는 파일이라 머리말 점검에서 뺀다(raw/archive/reviews/ 는 예전 기록이라 그대로 본다).
+raw/reports/ 의 아침 보고서도 머리말과 식별자가 없는 파일이라 머리말 점검에서 뺀다(raw/archive/reports/ 는 예전 기록이라 그대로 본다).
+아침 보고서와 추정 기록(wiki/hypotheses.md)에 적힌 C-·D-·X- id 참조는 다른 문서처럼 존재하는지 본다. H- 번호는 기록 id가 아니라 보지 않는다.
 P-로 시작하는 옛 기준 항목 id는 없어진 기준 문서의 이름이라 지난 기록에 남아 있어도 점검하지 않는다."""
 import pathlib, re, sys
 
@@ -29,7 +31,7 @@ TABLE_HEAD = ["사례", "한 줄 요약", "관련 규칙", "규칙과 관계"]
 RELATIONS = {"규칙을 뒷받침", "규칙과 반대", "규칙 없음", "기각"}
 
 USAGE = "사용: check_invariants.py <지식 베이스> [--skip-rule-cases] [--skip-summary]"
-NO_FRONTMATTER_DIRS = {"journal", "reviews"}   # raw/ 바로 아래에서 머리말 없이 쌓는 폴더
+NO_FRONTMATTER_DIRS = {"journal", "reviews", "reports"}   # raw/ 바로 아래에서 머리말 없이 쌓는 폴더
 SOURCES = {"session", "memo"}
 EXTRACT_START = "<!-- extract:start -->"
 EXTRACT_END = "<!-- extract:end -->"
@@ -81,7 +83,7 @@ def main():
     case_ids = set()
     draft_ids = {}   # 확인 전(status: draft) 기록 id → 파일 이름. 요약에 올라가 있으면 안 된다
     summarize = {}   # 요약에 나와야 하는 유효한 결정·맥락 id → 파일 이름
-    # 메모(raw/journal/)와 점검 보고서(raw/reviews/)는 머리말이 없는 파일이다.
+    # 메모(raw/journal/), 점검 보고서(raw/reviews/), 아침 보고서(raw/reports/)는 머리말이 없는 파일이다.
     raw_files = [p for p in kb.glob("raw/**/*.md")
                  if p.relative_to(kb).parts[1] not in NO_FRONTMATTER_DIRS]
     reports = [p for p in (kb / "raw" / "reviews").glob("*.html")]

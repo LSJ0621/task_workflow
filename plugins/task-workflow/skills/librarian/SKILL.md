@@ -34,7 +34,7 @@ description: 지식 베이스의 사서. 확정된 기록(status가 active인 �
 - 정리 절차: `references/shelving.md`
 - 구조 점검 절차: `references/structure.md`
 - 구조 변경 브랜치 머지: `references/merging.md`
-- 기록 형식(두 가지 문서, 불변 조건, 승인 범위, 식별자, 파일명, 머리말과 scope·domain, 규칙별 사례표, 점검 보고서, 문서를 나눌지 합칠지, 맥락 요약, 카드): `references/records.md`
+- 기록 형식(두 가지 문서, 불변 조건, 승인 범위, 식별자, 파일명, 머리말과 scope·domain, 규칙별 사례표, 점검 보고서, 아침 보고서와 추정 기록, 문서를 나눌지 합칠지, 맥락 요약, 카드): `references/records.md`
 - 사례·결정·맥락 틀: `references/templates/`
 - 글쓰기: `references/writing.md`
 - 불변 조건 점검(`check_invariants.py`), 식별자 계산(`next_id.py`), 예전 기록의 형식 옮기기(`migrate_record_format.py`): `scripts/`
