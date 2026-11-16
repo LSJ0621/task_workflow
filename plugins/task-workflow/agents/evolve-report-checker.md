@@ -12,8 +12,8 @@ color: orange
 
 ## 받는 것
 
-- 아침 보고서 경로(`~/.claude/evolve/reports/YYYY-MM-DD.md`)
-- 추정 기록 경로(`~/.claude/evolve/hypotheses.md`)
+- 아침 보고서 경로(지식 베이스 `raw/reports/YYYY-MM-DD.md`)
+- 추정 기록 경로(지식 베이스 `wiki/hypotheses.md`)
 - 세 저장소의 위치(전역 설정 `~/.claude`, 플러그인 체크아웃, 지식 베이스)
 - 다시 확인하는 경우에는 고친 쪽의 답("바로잡음" 또는 "답함: 이유")
 
