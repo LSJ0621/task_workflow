@@ -6,7 +6,7 @@
 | 스킬 | 사용하는 시점 |
 | --- | --- |
 | `setup-project-guidance` | 프로젝트 AGENTS.md 초안을 제안하고 검수 후 작성·갱신할 때. 새 프로젝트의 지침 파일을 처음 쓸 때 |
-| `analyze-task` | 자료를 이해하고 요구사항·데이터·중요 질문을 정리할 때 |
+| `analyze-task` | 자료를 이해하고 요구사항·데이터·중요 질문을 정리할 때. 요구사항 정의서나 기능 명세를 쓸 때 |
 | `maintain-work-notes` | 논의·결정을 기록하고 문서와 필요한 Git 이력으로 정리·재개할 때. 끝나지 않은 작업을 새 세션에 넘길 때 |
 | `collaborate-plan-execute` | 계획에 병렬·순차 작업을 반영하거나, 확정된 계획을 위임·통합할 때 |
 | `verify-work` | 실제 결과물이 요구사항을 충족하는지 검사하고 핵심 구현을 이해할 때. Claude Code에서는 검증을 서브에이전트 `verifier`에 맡깁니다 |
@@ -124,7 +124,7 @@ AGENTS.md의 기록 스킬 사용 안내는 프로젝트 지침이며 실행 훅
 - `.claude-plugin/marketplace.json`: Claude Code 설치 목록 설정.
 - `plugins/task-workflow/.claude-plugin/plugin.json`: Claude Code manifest. 같은 이름·버전을 유지합니다.
 - `plugins/task-workflow/skills/`: 스킬 지침과 필요할 때만 읽는 참고 지침.
-- `plugins/task-workflow/hooks/`: 플러그인 훅 설정(`hooks.json`)과 훅이 돌리는 스크립트. 지금은 사용자 입력에 질문이 있으면 무엇을 채우고 무엇을 뺄지의 기준이 있는 곳을 알려 주는 훅 하나가 있습니다. 입력을 막지 않습니다.
+- `plugins/task-workflow/hooks/`: 플러그인 훅 설정(`hooks.json`)과 훅이 돌리는 스크립트. 지금은 사용자 입력에 질문이 있으면 무엇을 채우고 무엇을 뺄지의 기준이 있는 곳을 알려 주는 훅 하나가 있습니다. 입력이 앞 답의 구절을 인용해 되묻는 것이면 방금 읽은 내용이라는 것을 대신 알려 줍니다. 입력을 막지 않습니다.
 - `plugins/task-workflow/agents/`: Claude Code 서브에이전트 정의. `verifier`(결과물 검증), `record-checker`(새벽에 만든 원본 기록 확인), `evolve-report-checker`(자가 발전 아침 보고서 확인)가 있습니다.
 - 각 스킬의 `agents/openai.yaml`: UI 표시 정보이며 커스텀 서브에이전트 정의가 아닙니다.
 - `plugins/task-workflow/skills/setup-knowledge-base/assets/knowledge-base/`: 지식 베이스 초안. 개인 내용은 없고 `{{...}}` 자리표시자를 `scripts/bootstrap.py`가 치환합니다.
