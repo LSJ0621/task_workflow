@@ -367,6 +367,35 @@ class UnknownFormatTest(TempProjects):
         self.assertEqual(code, 0)
         self.assertIn("> 가운데", out)
 
+    def test_data_flow_ledger_lines_are_skipped(self):
+        # 앱이 대화 줄 사이에 남기는 장부 줄(uuid도 시각도 없다). 모르는 형식으로 멈추지 않고, 실리지도 않는다
+        ledger = [
+            {"type": "data-flow-records", "v": 1, "sessionId": SID2,
+             "records": [{"response_id": "resp_MARKER_1", "listed": ["Read", "MARKER_tool"]}]},
+            {"type": "data-flow-records", "v": 1, "sessionId": SID2, "snapshot": True,
+             "records": [{"tool_use_id": "toolu_MARKER_2", "tool_name": "MARKER_call",
+                          "mcp_tool_name": "MARKER_mcp", "server": {"type": "local", "id": "MARKER_server"}},
+                         {"event_id": "evt_MARKER_3", "source": {"type": "session", "id": "MARKER_source"}}]},
+        ]
+        self.write_session([human(1, "앞 글"), ledger[0], agent(2, [{"type": "text", "text": "가운데 답"}]),
+                            ledger[1], human(3, "뒤 글", minute=1)])
+        code, out, err = run(["extract", "--session", SID2, "--from", uid(1), "--to", uid(3)],
+                             projects=self.projects)
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("MARKER", out)
+        self.assertEqual(out, (
+            "**사용자** (11:00)\n"
+            "> 앞 글\n"
+            "\n"
+            "**에이전트** (11:00)\n"
+            "> 가운데 답\n"
+            "\n"
+            "**사용자** (11:01)\n"
+            "> 뒤 글\n"
+        ))
+        record = self.write_record(out, first=uid(1), last=uid(3), session=SID2)
+        self.assertEqual(run(["verify", record], projects=self.projects)[0], 0)
+
     def test_list_and_find_do_not_stop_on_unknown(self):
         self.write_session([human(1, "앞 글"), {"type": "brand-new-line"}, human(3, "뒤 글")])
         code, out, _ = run(["list", "--session", SID2], projects=self.projects)
