@@ -471,7 +471,7 @@ def write_table(path, rows):
 # ---------------------------------------------------------------------------
 
 def main():
-    ap = argparse.ArgumentParser(description="주 단위 측정값을 뽑아 evolve/metrics.md 를 고친다")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("knowledge_base", nargs="?", default=os.environ.get("KNOWLEDGE_BASE_DIR"))
     ap.add_argument("--weeks", type=int, default=2)
     ap.add_argument("--today")
