@@ -149,7 +149,7 @@ def current_paths(repo, name):
     return [line for line in out.splitlines() if line.strip()]
 
 def main():
-    ap = argparse.ArgumentParser(description="이름으로 구조 결정 기록과 그 경로의 git 이력을 날짜순으로 찍는다")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("name")
     ap.add_argument("--knowledge-base", default=os.environ.get("KNOWLEDGE_BASE_DIR"))
     ap.add_argument("--repo", action="append", default=[])
