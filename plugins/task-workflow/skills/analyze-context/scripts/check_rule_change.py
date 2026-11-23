@@ -3,7 +3,7 @@
 커밋을 막는다. 자가 발전이 같은 절을 되풀이해 고치는 것은 막지 않고 알린다.
 
 사용:
-  check_rule_change.py [--repo <저장소>] [--who user|evolve] [--decision <id>]
+  check_rule_change.py [--repo <저장소>] [--who user|evolve] [--decision <id>] [--over-limit-reason <이유>]
                        [--knowledge-base <폴더>] [--limits <한도 파일>] [--today YYYY-MM-DD]
       스테이징된 변경을 검사한다. 종료 코드 0 = 통과(알림만 있어도 0), 1 = 막음.
   check_rule_change.py --audit --since <태그나 커밋> [--repo <저장소>] [--knowledge-base <폴더>] [--limits <한도 파일>]
@@ -18,6 +18,9 @@
 
 검사 네 가지
 1. 글자 수: 한도 파일에 적힌 규칙 파일(전역 지침, 응답 양식)의 글자 수가 한도를 넘으면 막는다.
+   넘는 것이 맞다고 판단했으면 이유를 --over-limit-reason(훅이면 환경 변수 RULE_CHANGE_OVER_LIMIT_REASON)으로 준다.
+   이유가 있으면 막지 않고 이유와 함께 알림으로 낸다. 2번도 같다. 고치는 것이 맞는 때에도 무조건 막지는 않으려는 것이다.
+   커밋 메시지에도 "한도를 넘긴 이유:"로 시작하는 줄을 적는다. 사후 검사는 그 줄을 보고 어김이 아니라 알림으로 낸다.
    이미 한도를 넘어 있는 파일을 줄이는 커밋은 알림만 낸다.
 2. "예:" 개수: 규칙 문서의 절(`## ` 제목) 하나에 "예:"가 한도보다 많아지면 막는다.
    이미 한도를 넘어 있는 절은 더 늘어날 때만 막는다.
@@ -69,6 +72,10 @@ DEFAULT_EDITS = 2
 DEFAULT_WINDOW_DAYS = 30
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 WHO_ENV, DECISION_ENV, LIMITS_ENV, KB_ENV = "RULE_CHANGE_WHO", "RULE_CHANGE_DECISION", "RULE_CHANGE_LIMITS", "KNOWLEDGE_BASE_DIR"
+REASON_ENV = "RULE_CHANGE_OVER_LIMIT_REASON"
+REASON_LINE_RE = re.compile(r"^[ \t]*한도를 넘긴 이유:[ \t]*(\S.*)$", re.M)
+REASON_GUIDE = ("넘는 것이 맞으면 이유를 --over-limit-reason(훅이면 RULE_CHANGE_OVER_LIMIT_REASON)으로 주고 "
+                "커밋 메시지에 \"한도를 넘긴 이유:\" 줄을 적는다")
 WHO_NAMES = {"evolve": "자가 발전", "user": "사용자"}
 WHO_RE = re.compile(r"^[ \t]*누가 정했(?:는지|나)[ \t]*:[ \t]*(자가 발전|사용자)", re.M)   # 줄이 이 말로 시작할 때만
 DECISION_RE = re.compile(r"\bD-\d{8}-\d{2}\b")
@@ -290,10 +297,18 @@ def decision_exists(kb, rid):
     folder = kb / "raw" / "decisions"
     return any(p.name == f"{rid}.md" or p.name.startswith(rid + "-") for p in folder.glob(f"{rid}*.md"))
 
-def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
+def examine(repo, changes, limits, who, decisions, kb, history_rev, day, reason=""):
     """(막을 것, 알림, 구조 파일) 세 목록. who 가 user 면 1~2는 알림이 된다. 3은 누가 정했든 알림이다. day 는 검사하는 날(사후 검사는 그 커밋을 한 날)."""
     blocks, notices = [], []
-    soft = notices if who == "user" else blocks
+
+    def over(text):
+        """한도를 넘은 것. 사용자가 정했으면 알림, 넘긴 이유가 있으면 이유와 함께 알림, 둘 다 아니면 막는다."""
+        if who == "user":
+            notices.append(text)
+        elif reason:
+            notices.append(f"{text}. 한도를 넘긴 이유가 있어 통과시킨다: {reason}")
+        else:
+            blocks.append(f"{text}. {REASON_GUIDE}")
     structure, modified = [], []
     for kind, old, new, before, after in changes:
         change = structure_change(kind, old, new)
@@ -306,7 +321,7 @@ def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
             limit, size = limits["chars"][new], len(after)
             was = len(before) if before is not None else None
             if size > limit and (was is None or size > was):
-                soft.append(f"글자 수: {new} {size}자, 한도 {limit}자" + (f"(커밋 전 {was}자)" if was is not None else ""))
+                over(f"글자 수: {new} {size}자, 한도 {limit}자" + (f"(커밋 전 {was}자)" if was is not None else ""))
             elif size > limit:
                 notices.append(f"글자 수: {new} {size}자로 한도 {limit}자를 넘지만 커밋 전({was}자)보다 늘지 않았다")
         # 2. 절 하나의 "예:" 개수
@@ -314,7 +329,7 @@ def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
         had = example_counts(before) if before is not None else {}
         for name, count in example_counts(after).items():
             if count > cap and count > had.get(name, 0):
-                soft.append(f"\"예:\" 개수: {new} \"{name}\" 절 {count}개, 한도 {cap}개(커밋 전 {had.get(name, 0)}개)")
+                over(f"\"예:\" 개수: {new} \"{name}\" 절 {count}개, 한도 {cap}개(커밋 전 {had.get(name, 0)}개)")
         # 3. 자가 발전이 같은 절을 되풀이해 고침
         if before is not None and history_rev:
             for name in edited_sections(before, after):
@@ -363,8 +378,9 @@ def cmd_check(a):
     today = a.today or datetime.date.today().isoformat()
     if not DAY_RE.match(today):
         fail(f"날짜는 YYYY-MM-DD로 적는다: {today}")
+    reason = (a.over_limit_reason or os.environ.get(REASON_ENV) or "").strip()
     blocks, notices, structure = examine(repo, changes, limits, who, decisions, knowledge_base(a.knowledge_base),
-                                         "HEAD" if head_exists(repo) else None, today)
+                                         "HEAD" if head_exists(repo) else None, today, reason)
     if given and not decisions:
         notices.append(f"결정 기록 id 모양(D-YYYYMMDD-NN)이 아님: {given}")
     rule_docs = [c for c in changes if c[0] != "D" and is_rule_doc(c[2], limits, repo)]
@@ -426,8 +442,9 @@ def cmd_audit(a):
         who = "user" if m == "사용자" else "evolve"
         has_parent = git(repo, "rev-parse", "--verify", "-q", f"{commit}^") is not None
         decisions = DECISION_RE.findall(message) + covered.get(commit, [])
+        said = REASON_LINE_RE.findall(message)
         blocks, notices, _ = examine(repo, changes, limits, who, decisions, kb,
-                                     f"{commit}^" if has_parent else None, day)
+                                     f"{commit}^" if has_parent else None, day, said[-1].strip() if said else "")
         if not m:
             unmarked += 1
             notices.append("커밋 메시지에 누가 정했는지가 없다. 자가 발전의 변경으로 보고 검사했다")
@@ -466,6 +483,7 @@ def cmd_install_hook(a):
         f"# {HOOK_MARK} 가 건 규칙 커밋 전 검사. `check_rule_change.py install-hook`으로 다시 만든다. 손으로 고치지 않는다.",
         "# 누가 정했는지와 구조 결정 기록 id는 환경 변수로 준다:",
         "#   RULE_CHANGE_WHO=user RULE_CHANGE_DECISION=D-YYYYMMDD-NN git commit ...",
+        "# 한도를 넘겨야 하면 이유를 준다: RULE_CHANGE_OVER_LIMIT_REASON='...' git commit ...",
         f'SCRIPT="${{RULE_CHANGE_SCRIPT:-{script}}}"',
         'if [ ! -f "$SCRIPT" ]; then',
         '  echo "규칙 커밋 전 검사 스크립트가 없어 검사하지 못했다: $SCRIPT (install-hook 으로 다시 건다)" >&2',
@@ -551,6 +569,7 @@ def main(argv=None):
     ap.add_argument("--repo")
     ap.add_argument("--who", choices=sorted(WHO_NAMES))
     ap.add_argument("--decision")
+    ap.add_argument("--over-limit-reason", help="글자 수나 \"예:\" 한도를 넘겨야 하는 이유. 주면 막지 않고 알림으로 낸다")
     ap.add_argument("--knowledge-base")
     ap.add_argument("--limits")
     ap.add_argument("--today", help="검사하는 날 YYYY-MM-DD (기본 오늘). 3번 검사의 창을 여기서부터 거꾸로 센다")

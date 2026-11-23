@@ -130,7 +130,21 @@ class CharsTest(Base):
         self.assertEqual(code, 1)
         self.assertEqual(len(blocks), 1)
         self.assertIn("글자 수: CLAUDE.md %d자, 한도 %d자" % (len(GUIDE) + 9, len(GUIDE)), blocks[0])
+        self.assertIn("--over-limit-reason", blocks[0])   # 넘는 것이 맞을 때 어떻게 하는지 알려 준다
         self.assertIn("막음 1건", out)
+
+    def test_growing_past_the_limit_passes_when_a_reason_is_given(self):
+        # 고치는 것이 맞는 때에도 무조건 막지 않으려고, 이유를 주면 알림으로만 낸다
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        code, blocks, notices, _ = self.check("--over-limit-reason", "틀린 문장을 대신할 기준이 더 길다")
+        self.assertEqual((code, blocks), (0, []))
+        hit = [line for line in notices if line.startswith("글자 수: CLAUDE.md")]
+        self.assertEqual(len(hit), 1)
+        self.assertIn("한도를 넘긴 이유가 있어 통과시킨다: 틀린 문장을 대신할 기준이 더 길다", hit[0])
+        code, blocks, notices, _ = self.check(extra={"RULE_CHANGE_OVER_LIMIT_REASON": "훅으로 걸렸을 때의 이유"})
+        self.assertEqual((code, blocks), (0, []))
+        self.assertTrue(any("훅으로 걸렸을 때의 이유" in line for line in notices))
+        self.assertEqual(self.check("--over-limit-reason", "   ")[0], 1)   # 빈 이유는 이유가 아니다
 
     def test_same_size_or_smaller_passes(self):
         self.write("CLAUDE.md", GUIDE.replace("정확성이 먼저다", "정확성이 우선이다"[:8]))
@@ -178,8 +192,12 @@ class ExamplesTest(Base):
         self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 하나씩 한다(예: 가). 예: 나.\n")
         code, blocks, _, _ = self.check()
         self.assertEqual(code, 1)
-        self.assertEqual(blocks, ['"예:" 개수: skills/helper/SKILL.md "순서" 절 2개, 한도 1개(커밋 전 0개)'])
+        self.assertEqual(len(blocks), 1)
+        self.assertTrue(blocks[0].startswith('"예:" 개수: skills/helper/SKILL.md "순서" 절 2개, 한도 1개(커밋 전 0개)'))
         self.assertEqual(self.check("--who", "user")[:2], (0, []))
+        code, blocks, notices, _ = self.check("--over-limit-reason", "방향이 반대인 예가 하나 더 필요하다")
+        self.assertEqual((code, blocks), (0, []))
+        self.assertTrue(any("방향이 반대인 예가 하나 더 필요하다" in line for line in notices))
 
     def test_examples_spread_over_sections_pass(self):
         self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 하나씩 한다(예: 가).\n\n## 보고\n- 짧게(예: 나).\n")
@@ -540,6 +558,20 @@ class AuditTest(Base):
 
     def audit(self, *extra):
         return self.script("--audit", "--since", "review-1", "--repo", self.repo, "--limits", self.limits, *extra)
+
+    def test_audit_takes_the_reason_line_in_the_commit_message(self):
+        self.git("tag", "review-1")
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        self.commit("원칙에 한 줄\n\n" + EVOLVE, date="2026-01-03T09:00:00")
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n- 또 한 줄.\n")
+        self.commit("원칙에 또 한 줄\n\n한도를 넘긴 이유: 지난 기준이 틀려 바꿔 쓴 문장이 더 길다\n" + EVOLVE, date="2026-01-04T09:00:00")
+        code, out, err = self.audit("--knowledge-base", self.kb)
+        self.assertEqual(code, 1, err)
+        self.assertIn("어긴 커밋 1개(어김 1건)", out)     # 이유를 안 적은 첫 커밋만 어김이다
+        rows = out.splitlines()
+        second = next(i for i, row in enumerate(rows) if "원칙에 또 한 줄" in row)
+        self.assertIn("[알림]", rows[second + 1])
+        self.assertIn("지난 기준이 틀려 바꿔 쓴 문장이 더 길다", rows[second + 1])
 
     def test_audit_counts_repeats_in_the_window_before_each_commit(self):
         self.git("tag", "review-1")
