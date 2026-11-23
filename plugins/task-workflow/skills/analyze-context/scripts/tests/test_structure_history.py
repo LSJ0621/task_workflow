@@ -20,6 +20,7 @@ class StructureHistoryTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.kb = os.path.join(self.tmp, "kb")
         os.makedirs(os.path.join(self.kb, "raw", "decisions"))
+        os.makedirs(os.path.join(self.kb, "wiki", "projects"))
         self.repo = os.path.join(self.tmp, "fake-plugin")
         os.makedirs(self.repo)
         self.git("init", "-q")
@@ -120,6 +121,59 @@ class StructureHistoryTest(unittest.TestCase):
         out = self.run_script("report-check", "--limit", "2")[1]
         self.assertIn("오래된 5줄은 뺐다", out)
         self.assertEqual([row[0] for row in self.rows(out)], ["2026-01-12", "2026-01-12"])
+
+    # -- 설치본에서 돌릴 때 -------------------------------------------------
+
+    def installed_copy(self):
+        """Claude 설정 저장소 안의 추적되지 않는 폴더에 플러그인을 설치한 모양. (설정 저장소, 설치본의 스크립트)"""
+        config = os.path.join(self.tmp, "config")
+        root = os.path.join(config, "plugins", "cache", "market", "fake-plugin", "0.1.0")
+        scripts = os.path.join(root, "skills", "analyze-context", "scripts")
+        os.makedirs(scripts)
+        os.makedirs(os.path.join(root, ".claude-plugin"))
+        shutil.copy(SCRIPT, scripts)
+        with open(os.path.join(root, ".claude-plugin", "plugin.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"name": "fake-plugin"}')
+        for rel, text in ((".gitignore", "plugins/\n"), ("report-check.md", "설정 저장소의 글\n")):
+            with open(os.path.join(config, rel), "w", encoding="utf-8") as handle:
+                handle.write(text)
+        env = dict(os.environ, GIT_AUTHOR_DATE="2026-01-04T09:00:00", GIT_COMMITTER_DATE="2026-01-04T09:00:00",
+                   GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "설정 저장소의 커밋"]):
+            subprocess.run(["git", "-C", config] + args, check=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return config, os.path.join(scripts, "structure_history.py")
+
+    def run_installed(self, script, config, extra_env=None):
+        env = dict(os.environ, CLAUDE_CONFIG_DIR=config)
+        for name in ("KNOWLEDGE_BASE_DIR", "PLUGIN_REPO_DIR"):
+            env.pop(name, None)
+        env.update(extra_env or {})
+        done = subprocess.run([sys.executable, script, "report-check", "--knowledge-base", self.kb],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8"))
+        return done.stdout.decode("utf-8"), done.stderr.decode("utf-8")
+
+    def test_installed_copy_finds_the_plugin_repository_from_the_project_card(self):
+        config, script = self.installed_copy()
+        with open(os.path.join(self.kb, "wiki", "projects", "fake-plugin.md"), "w", encoding="utf-8") as handle:
+            handle.write("# fake-plugin\n\n- 저장소: `%s`\n" % self.repo)
+        out, err = self.run_installed(script, config)
+        self.assertEqual(err, "")
+        self.assertIn("지금 있는 경로(fake-plugin): 없음", out)
+        self.assertIn("지금 있는 경로(config): report-check.md", out)
+        commits = [row[3] for row in self.rows(out) if row[1] == "커밋"]
+        self.assertEqual(commits, ["스킬 report-check를 더한다", "설정 저장소의 커밋", "보고서 확인 문장을 고친다",
+                                   "훅을 더한다", "아침 확인을 없앤다"])
+
+    def test_installed_copy_without_card_says_so_and_shows_the_rest(self):
+        config, script = self.installed_copy()
+        out, err = self.run_installed(script, config)
+        self.assertIn("플러그인 저장소를 못 찾았다", err)
+        self.assertEqual([row[3] for row in self.rows(out) if row[1] == "커밋"], ["설정 저장소의 커밋"])
+        self.assertEqual(len([row for row in self.rows(out) if row[1] != "커밋"]), 3)
+        out, err = self.run_installed(script, config, {"PLUGIN_REPO_DIR": self.repo})
+        self.assertEqual(err, "")
+        self.assertEqual(len([row for row in self.rows(out) if row[1] == "커밋"]), 5)
 
     def test_errors(self):
         self.assertNotEqual(self.run_script()[0], 0)

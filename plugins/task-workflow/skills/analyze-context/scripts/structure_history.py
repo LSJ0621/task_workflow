@@ -18,8 +18,10 @@
 
 - 지식 베이스: --knowledge-base, 없으면 $KNOWLEDGE_BASE_DIR. 없으면 커밋만 찍는다.
 - 저장소: --repo 를 여러 번 줄 수 있다. 안 주면 플러그인 저장소와 Claude 설정 저장소($CLAUDE_CONFIG_DIR 또는 ~/.claude)다.
-  플러그인 저장소는 이 스크립트가 든 git 저장소이고, 설치본처럼 git 저장소가 아니면
-  지식 베이스의 플러그인 카드(wiki/projects/<플러그인 이름>.md)에 적힌 저장소 위치를 쓴다.
+  플러그인 저장소는 $PLUGIN_REPO_DIR, 없으면 지식 베이스의 플러그인 카드(wiki/projects/<플러그인 이름>.md)에 적힌
+  저장소 위치, 없으면 이 스크립트가 든 git 저장소다. 마지막 것은 그 저장소가 이 파일을 추적할 때만 쓴다.
+  설치본 폴더는 Claude 설정 저장소 안에 있어서, 그냥 쓰면 설정 저장소가 플러그인 저장소로 잡히기 때문이다.
+  못 찾으면 표준 오류에 알리고 찾은 저장소만 본다.
 - --limit: 찍는 줄 수의 한도(기본 200). 넘으면 최근 것만 찍고 몇 줄을 뺐는지 알린다.
 """
 import argparse, os, pathlib, re, subprocess, sys
@@ -29,6 +31,7 @@ REPO_LINE_RE = re.compile(r"^- (?:저장소|위치):(.*)$", re.M)
 BACKTICK_RE = re.compile(r"`([^`\s]+)`")
 SUMMARY_HEADS = ("## 요지", "## 결정")
 FIELD = "\x1f"
+PLUGIN_REPO_ENV = "PLUGIN_REPO_DIR"
 
 def git(repo, *args):
     try:
@@ -83,15 +86,37 @@ def card_repo(kb, name):
                 return pathlib.Path(token).expanduser()
     return None
 
+def tracks(repo, path):
+    """repo 가 그 파일을 추적하는가. 설치본은 Claude 설정 저장소 안에 있지만 추적되지 않는다."""
+    try:
+        rel = pathlib.Path(path).resolve().relative_to(pathlib.Path(repo).resolve())
+    except ValueError:
+        return False
+    return git(repo, "ls-files", "--error-unmatch", "--", str(rel)) is not None
+
+def find_plugin_repo(kb):
+    """플러그인 저장소의 체크아웃. 환경 변수, 지식 베이스의 플러그인 카드, 이 스크립트가 든 저장소 순서로 찾는다.
+    이 스크립트가 든 저장소는 그 저장소가 이 파일을 추적할 때만 쓴다. 설치본 폴더는 Claude 설정 저장소 안이라
+    그냥 쓰면 설정 저장소가 플러그인 저장소로 잡힌다. 못 찾으면 None."""
+    here = pathlib.Path(__file__).resolve()
+    given = os.environ.get(PLUGIN_REPO_ENV)
+    if given:
+        folder = pathlib.Path(given).expanduser()
+        return toplevel(folder) if folder.is_dir() else None
+    found = card_repo(kb, plugin_name(here.parents[3])) if kb is not None else None
+    if found and found.is_dir() and toplevel(found):
+        return toplevel(found)
+    own = toplevel(here.parent)
+    return own if own and tracks(own, here) else None
+
 def default_repos(kb):
     repos = []
-    here = pathlib.Path(__file__).resolve()
-    plugin_repo = toplevel(here.parent)
-    if plugin_repo is None and kb is not None:
-        found = card_repo(kb, plugin_name(here.parents[3]))
-        plugin_repo = toplevel(found) if found and found.is_dir() else None
+    plugin_repo = find_plugin_repo(kb)
     if plugin_repo:
         repos.append(plugin_repo)
+    else:
+        sys.stderr.write("알림: 플러그인 저장소를 못 찾았다(--repo, $%s, 지식 베이스의 플러그인 카드, 이 스크립트가 든 저장소 "
+                         "순서로 찾는다). 그 저장소의 커밋은 찍지 못한다\n" % PLUGIN_REPO_ENV)
     claude = pathlib.Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser()
     if claude.is_dir():
         top = toplevel(claude)
