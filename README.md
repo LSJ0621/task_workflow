@@ -35,7 +35,7 @@
 - 프로젝트 작업은 그 프로젝트 폴더에서 연 세션이 사용자와 직접 하고, 결과도 그 세션이 바로 알립니다. 작업 단위가 끝나면 그 세션이 지식 베이스 상황판(`wiki/board.md`)의 자기 프로젝트 묶음을 고칩니다(`leave-memo`). 자가 발전이 그 프로젝트에만 걸리는 규칙 후보를 묶음의 "지침 후보"에 적어 두면 그 세션이 프로젝트 지침으로 옮깁니다.
 - 낮에는 세션이 `leave-memo`로 메모 한 줄을 적고 커밋만 합니다. 사용자 말과 에이전트가 이해한 뜻(풀이)을 나눠 적고, 세션 id를 붙이고, 적을 때 이해한 뜻을 사용자에게 한 줄로 보여 줍니다. 메모는 원본이 아니라 "어느 세션의 어느 때쯤"을 가리키는 표지입니다. 기록은 새벽에만 만듭니다.
 - 새벽에는 0단계 측정 뒤에 네 단계가 차례로 돕니다. 기록, 기록 확인, 분석과 규칙 고치기, 정리입니다. 측정은 스크립트(`measure.py`)가 세션 기록과 저장소에서 주 단위 숫자를 뽑아 지식 베이스 `evolve/metrics.md`에 적는 일입니다. 새로 확정된 기록이 없고 측정값도 판정 조건에 걸리지 않은 날은 분석 단계를 건너뜁니다.
-- 1단계 기록(`write-records`)은 메모 줄마다 세션 기록에서 그 대화를 스크립트(`session_extract.py`)로 뽑아 원본 기록을 `status: draft`로 만듭니다. 사용자와 에이전트가 주고받은 말과 그때 부른 도구 목록이 그대로 실립니다. 세션 기록을 찾지 못한 메모만 메모에서 옮깁니다(`source: memo`).
+- 1단계 기록(`write-records`)은 메모 줄마다 세션 기록에서 그 대화를 스크립트(`session_extract.py`)로 뽑아 원본 기록을 `status: draft`로 만듭니다. 뽑은 글 전체는 `raw/sessions/<세션 id>.md`에 한 번만 적고, 기록에는 사용자 말과 그때 부른 스킬·읽은 파일만 남깁니다. 세션 기록을 찾지 못한 메모만 메모에서 옮깁니다(`source: memo`).
 - 2단계 기록 확인은 다른 서브에이전트(`record-checker`)가 기록마다 뽑은 글이 스크립트 출력 그대로인지, 범위가 맞는지, 요지가 있었던 일에 있는 것만 말하는지, 비밀값이 남지 않았는지를 봅니다. 통과한 기록만 `status: active`로 확정됩니다. 처음 7일은 세션 기록을 직접 읽어 스크립트 출력과 대어 보고, 그 뒤로는 토요일에 세 건만 대어 봅니다.
 - 3단계 자가 발전(`analyze-context`)이 확정된 사례를 규칙별 사례표에 한 줄씩 적고, 실수가 난 원인을 추정해 사례의 분석 절에 적고, 그 원인을 막는 방법으로 규칙을 고칩니다. 실수를 뒤집은 문장을 더하지 않고, 있는 문장을 고쳐 쓰거나 읽히는 곳으로 옮기는 것을 먼저 봅니다. 지식 베이스에서 못 찾았다는 사례는 기록은 있는데 못 찾은 것인지, 대화에 있었는데 기록이 안 된 것인지, 말한 적이 없는 것인지 가릅니다. 변경 하나에 커밋 하나를 남기고, 커밋 전에 검사(`check_rule_change.py`)가 글자 수 한도와 같은 절의 세 번째 문장 수정을 막습니다. 무엇을 원인으로 봤는지는 추정 기록(지식 베이스 `evolve/hypotheses.md`)에, 어디까지 봤는지는 상태 파일(`~/.claude/evolve/state.md`)에 적습니다.
 - 4단계 정리(`librarian`)는 확정된 결정과 맥락을 맥락 요약과 카드에 올리고, 새 기록이 바꾼 예전 기록을 찾아 표시하고, 회귀 질문을 더하고, 불변 조건을 점검한 뒤 앞 단계의 커밋까지 함께 push합니다. 사서는 메모를 읽거나 원본 기록을 쓰지 않고, 사례를 분류하거나 규칙을 고치지 않습니다.
@@ -127,7 +127,7 @@ AGENTS.md의 기록 스킬 사용 안내는 프로젝트 지침이며 실행 훅
 - `plugins/task-workflow/agents/`: Claude Code 서브에이전트 정의. `verifier`(결과물 검증), `record-checker`(새벽에 만든 원본 기록 확인)가 있습니다.
 - 각 스킬의 `agents/openai.yaml`: UI 표시 정보이며 커스텀 서브에이전트 정의가 아닙니다.
 - `plugins/task-workflow/skills/setup-knowledge-base/assets/knowledge-base/`: 지식 베이스 초안. 개인 내용은 없고 `{{...}}` 자리표시자를 `scripts/bootstrap.py`가 치환합니다.
-- `plugins/task-workflow/skills/write-records/scripts/`: 세션 기록에서 정해진 범위를 뽑고(`extract`), 기록을 다시 뽑아 비교하고(`verify`), 통과한 기록을 확정하는(`confirm`) 스크립트 `session_extract.py`. `tests/`에 지어낸 세션 기록과 시험이 있습니다.
+- `plugins/task-workflow/skills/write-records/scripts/`: 세션 기록에서 정해진 범위를 뽑아 발췌 파일과 기록에 나눠 적고(`extract --save`), 기록을 다시 뽑아 비교하고(`verify`), 통과한 기록을 확정하는(`confirm`) 스크립트 `session_extract.py`. `tests/`에 지어낸 세션 기록과 시험이 있습니다.
 - `plugins/task-workflow/skills/librarian/references/`: 메모 형식·기록 형식·정리 절차·구조 점검 절차·구조 변경 브랜치 머지·글쓰기 규칙과 기록 틀. `scripts/`에 식별자 계산, 불변 조건 점검, 유효한 기록 뽑기, 예전 기록의 형식 옮기기 스크립트가 있습니다.
 - `plugins/task-workflow/skills/analyze-context/references/`: 자가 발전의 판단 방법, 추정 기록의 형식, 토요일 사용자 분석 절차. `scripts/`에 측정(`measure.py`), 규칙 커밋 전 검사(`check_rule_change.py`), 구조 이력 뽑기(`structure_history.py`) 스크립트가 있습니다.
 - `plugins/task-workflow/skills/review-report/references/`: 점검 보고의 단계별 지침(분석, 검증, 만들기)과 단계 사이에 오가는 초안·판정의 형식. `assets/`에 보고서 HTML 틀이 있습니다.
