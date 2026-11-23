@@ -37,7 +37,7 @@ description: 개인 지식 베이스(마크다운 git 저장소)를 이 스킬�
    - 지식 베이스 안내 `CLAUDE.md`: 이 저장소가 지식 베이스라는 것, 여기서 연 세션은 프로젝트에 속하지 않는 대화(생활, 계획, 지식 베이스 관리)를 하는 곳이라는 것, 메모는 `task-workflow:leave-memo`, 원본 기록은 `task-workflow:write-records`, 요약 올리기는 `task-workflow:librarian`을 따른다는 것만 둔다. 초안은 `assets/knowledge-base/CLAUDE.md`.
    - 맥락 요약 `wiki/context.md`: 나에 대한 맥락을 도메인별로 한 줄씩, 끝에 모든 프로젝트에 걸린 결정. 줄마다 원본 id가 있어 원본을 매번 다 읽지 않아도 된다. 확정된 기록(`status: active`)만 올라간다. 없으면 사서가 정리 때 만든다. 초안은 `assets/knowledge-base/wiki/context.md`.
    - 상황판 `wiki/board.md`: 프로젝트마다 어디까지 왔는지 묶음 하나씩. 초안은 `assets/knowledge-base/wiki/board.md`.
-   - 규칙별 사례표 `wiki/rule-cases.md`: 자가 발전이 사례마다 관련 규칙을 적고, 이 표로 규칙을 고친다. 없으면 자가 발전이 처음 분류할 때 만든다. 초안은 `assets/knowledge-base/wiki/rule-cases.md`.
+   - 규칙별 사례표 `evolve/rule-cases.md`: 자가 발전이 사례마다 관련 규칙을 적고, 이 표로 규칙을 고친다. 없으면 자가 발전이 처음 분류할 때 만든다. 초안은 `assets/knowledge-base/evolve/rule-cases.md`. `evolve/`는 자가 발전이 쓰는 폴더다. 추정 기록과 측정값도 여기에 생긴다.
    - git 저장소: 기록을 지우지 않고 이력으로 남기기 위해서다.
 3. 아래 "설정 저장"을 한다.
 
