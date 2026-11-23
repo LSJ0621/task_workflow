@@ -449,7 +449,8 @@ def main(argv=None):
         ap.add_argument("--edits", type=int)
         ap.add_argument("--force", action="store_true")
         return cmd_init_limits(ap.parse_args(argv[1:]))
-    ap = argparse.ArgumentParser(prog="check_rule_change.py", description="규칙 커밋 전 검사")
+    ap = argparse.ArgumentParser(prog="check_rule_change.py", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo")
     ap.add_argument("--who", choices=sorted(WHO_NAMES))
     ap.add_argument("--decision")
