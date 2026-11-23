@@ -397,6 +397,30 @@ class UnknownFormatTest(TempProjects):
         record = self.write_record(out, first=uid(1), last=uid(3), session=SID2)
         self.assertEqual(run(["verify", record], projects=self.projects)[0], 0)
 
+    def test_derived_from_ledger_line_is_skipped(self):
+        # 세션이 어떻게 시작됐는지 적는 장부 줄(uuid도 시각도 없다). 세션 맨 앞과 대화 줄 사이에 온다
+        ledger = {"type": "derived-from", "v": 1, "sessionId": SID2,
+                  "sessions": [{"id": None, "type": "MARKER_kind", "via": "MARKER_via",
+                                "started": "2025-01-02T11:00:00.000Z"}]}
+        self.write_session([ledger, human(1, "앞 글"), agent(2, [{"type": "text", "text": "가운데 답"}]),
+                            ledger, human(3, "뒤 글", minute=1)])
+        code, out, err = run(["extract", "--session", SID2, "--from", uid(1), "--to", uid(3)],
+                             projects=self.projects)
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("MARKER", out)
+        self.assertEqual(out, (
+            "**사용자** (11:00)\n"
+            "> 앞 글\n"
+            "\n"
+            "**에이전트** (11:00)\n"
+            "> 가운데 답\n"
+            "\n"
+            "**사용자** (11:01)\n"
+            "> 뒤 글\n"
+        ))
+        record = self.write_record(out, first=uid(1), last=uid(3), session=SID2)
+        self.assertEqual(run(["verify", record], projects=self.projects)[0], 0)
+
     def test_list_and_find_do_not_stop_on_unknown(self):
         self.write_session([human(1, "앞 글"), {"type": "brand-new-line"}, human(3, "뒤 글")])
         code, out, _ = run(["list", "--session", SID2], projects=self.projects)
