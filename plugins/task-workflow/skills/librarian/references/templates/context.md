@@ -13,6 +13,7 @@ omitted: []            # 비밀값 때문에 뺀 줄의 uuid
 memo: YYYY-MM-DD HH:MM # 이 기록이 나온 메모 줄
 supersedes:
 superseded_by:
+valid_until:           # 기한이 날짜로 드러나 있을 때만 YYYY-MM-DD
 tags: []
 related: []
 ---
