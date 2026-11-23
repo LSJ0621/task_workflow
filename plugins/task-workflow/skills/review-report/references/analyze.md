@@ -35,7 +35,7 @@
 8. **추정 기록을 읽는다.** 지식 베이스의 `evolve/hypotheses.md` 전체와, `evolve/hypotheses-archive.md`에서 이 기간에 끝난 시도다. 파일이 없으면 없다고 적고 넘어간다.
 9. **분석 기록이 달라졌는지 본다.** 지난 태그 뒤에 지식 베이스 `raw/context/`에 머리말 `tags`가 `analysis`와 `tacit`를 함께 가진 기록이 새로 생겼는지 본다(모으기 6의 목록에서 찾는다).
 10. **측정값을 읽는다.** 지식 베이스 `evolve/metrics.md` 표에서 이번 주와 지난주 줄이다.
-11. **지난 커밋을 사후에 검사한다.** 플러그인 저장소의 `plugins/task-workflow/skills/analyze-context/scripts/check_rule_change.py`를 전역 설정과 플러그인 저장소마다 `--repo <저장소> --audit --since <지난 점검 태그>`로 돌린다. 그 밖의 인자는 `--help`로 본다. 한도를 넘긴 커밋, 같은 절을 세 번째로 고친 커밋, 결정 기록 없이 구조를 건드린 커밋이 나온다.
+11. **지난 커밋을 사후에 검사한다.** 플러그인 저장소의 `plugins/task-workflow/skills/analyze-context/scripts/check_rule_change.py`를 전역 설정과 플러그인 저장소마다 `--repo <저장소> --audit --since <지난 점검 태그>`로 돌린다. 그 밖의 인자는 `--help`로 본다. 한도를 넘긴 커밋과 결정 기록 없이 구조를 건드린 커밋이 어김으로, 같은 절을 되풀이해 고친 커밋이 알림으로 나온다.
 
 ## 2. 분석
 
