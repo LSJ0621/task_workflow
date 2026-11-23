@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""규칙 커밋 전 검사. 스테이징된 변경을 보고, 규칙이 늘기만 하거나 같은 절을 되풀이해 고치거나
-결정 기록 없이 구조를 바꾸는 커밋을 막는다.
+"""규칙 커밋 전 검사. 스테이징된 변경을 보고, 규칙이 늘기만 하거나 결정 기록 없이 구조를 바꾸는
+커밋을 막는다. 자가 발전이 같은 절을 되풀이해 고치는 것은 막지 않고 알린다.
 
 사용:
   check_rule_change.py [--repo <저장소>] [--who user|evolve] [--decision <id>]
@@ -21,8 +21,9 @@
    이미 한도를 넘어 있는 파일을 줄이는 커밋은 알림만 낸다.
 2. "예:" 개수: 규칙 문서의 절(`## ` 제목) 하나에 "예:"가 한도보다 많아지면 막는다.
    이미 한도를 넘어 있는 절은 더 늘어날 때만 막는다.
-3. 같은 절 되풀이: 자가 발전이 최근 창(기본 30일) 안에 그 절을 이미 한도(기본 2번)만큼 고쳤으면 다음 문장 수정을 막는다.
-   그때는 구조 조치(훅, 스크립트, 스킬 나누기)를 하거나 상태 파일에 올린다. 줄을 지우기만 하는 변경은 세지도 막지도 않는다.
+3. 같은 절 되풀이: 자가 발전이 최근 창(기본 30일) 안에 그 절을 이미 한도(기본 2번)만큼 고쳤으면 알림을 낸다. 막지 않는다.
+   효과가 없던 문장을 다른 방식으로 고쳐 쓰거나 틀린 문장을 빼는 것까지 막게 되어서다. 덧대는 것은 1번과 2번이 막는다.
+   줄을 지우기만 하는 변경은 세지 않는다.
    창은 검사하는 날(오늘, 또는 --today)에서 edits_window_days 일 전부터다. 전체 이력으로 세면 한두 번 고친 절이 영영 막혀서다.
    edits_since 가 있으면 창의 시작과 그 날짜 가운데 더 늦은 날부터 센다. 날짜는 커밋의 작성 날짜다.
    사후 검사는 커밋마다 그 커밋을 한 날을 기준으로 같은 창을 쓴다.
@@ -34,7 +35,7 @@
    결정 기록의 형식은 사서 스킬 기록 규칙의 "구조 결정 기록" 절에 있다.
 
 - 누가 정했는지는 --who 로 준다. 안 주면 환경 변수 RULE_CHANGE_WHO, 그것도 없으면 evolve(자가 발전)다.
-  사용자가 정한 변경(--who user)은 1~3을 알림으로만 낸다. 4는 누가 정했든 막는다.
+  사용자가 정한 변경(--who user)은 1~2를 알림으로만 낸다. 3은 누가 정했든 알림이다. 4는 누가 정했든 막는다.
 - 결정 기록 id는 --decision, 없으면 환경 변수 RULE_CHANGE_DECISION 이다. 사후 검사는 커밋 메시지에 적힌 D- id를 본다.
   사후 검사는 머지 커밋 메시지에 적힌 D- id도 그 머지로 들어온 커밋들(머지의 둘째 부모 쪽에서만 닿는 커밋)의 id로 친다.
   PR 하나에 결정 기록 하나를 남기고 머지 커밋(PR 제목)에 id를 적으면, 그 PR의 커밋마다 id를 적지 않아도 된다.
@@ -290,7 +291,7 @@ def decision_exists(kb, rid):
     return any(p.name == f"{rid}.md" or p.name.startswith(rid + "-") for p in folder.glob(f"{rid}*.md"))
 
 def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
-    """(막을 것, 알림, 구조 파일) 세 목록. who 가 user 면 1~3은 알림이 된다. day 는 검사하는 날(사후 검사는 그 커밋을 한 날)."""
+    """(막을 것, 알림, 구조 파일) 세 목록. who 가 user 면 1~2는 알림이 된다. 3은 누가 정했든 알림이다. day 는 검사하는 날(사후 검사는 그 커밋을 한 날)."""
     blocks, notices = [], []
     soft = notices if who == "user" else blocks
     structure, modified = [], []
@@ -319,10 +320,10 @@ def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
             for name in edited_sections(before, after):
                 hits = self_evolve_edits(repo, old, name, history_rev, window_start(limits, day))
                 if len(hits) >= limits["edits_per_section"]:
-                    soft.append(
+                    notices.append(
                         f"같은 절 되풀이: {new} \"{name}\" 절을 자가 발전이 {window_start(limits, day)}부터 "
-                        f"이미 {len(hits)}번 고쳤다({', '.join(hits)}). "
-                        "문장을 더 고치지 말고 구조 조치(훅, 스크립트, 스킬 나누기)를 하거나 상태 파일에 올린다")
+                        f"이미 {len(hits)}번 고쳤다({', '.join(hits)}). 막지 않는다. "
+                        "지난번과 같은 방식으로 또 고치는 것이면 다른 방식(고쳐 쓰기, 빼기, 옮기기, 훅, 스크립트)을 따진다")
     # 4. 구조를 더하거나 지우거나 옮겼으면 결정 기록
     known = kb is not None and any(decision_exists(kb, rid) for rid in decisions)
     if structure:
