@@ -5,6 +5,7 @@
 출력: 기록마다 `id | 제목 | 요지 첫 줄` 한 줄. id 순서다. 맞는 기록이 없으면 아무것도 찍지 않는다. 종료 코드 0.
 지식 베이스를 안 주면 $KNOWLEDGE_BASE_DIR 을 쓴다.
 --scope 는 여러 개 줄 수 있다. 안 주면 모든 범위다. --type 을 안 주면 결정과 맥락 둘 다다.
+지식 베이스 경로는 --scope 앞에 줘도 되고 뒤에 줘도 된다.
 
 정리 단계가 새로 확정된 결정을 지금 유효한 결정과 대조해, 바뀐 예전 기록에 대체됨 표시를 할 때 쓴다.
 기록을 전부 열지 않고 같은 범위의 유효한 기록만 훑어보게 하려는 것이다.
@@ -58,18 +59,25 @@ def one_cell(value):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("knowledge_base", nargs="?", default=os.environ.get("KNOWLEDGE_BASE_DIR"))
+    ap.add_argument("knowledge_base", nargs="?")
     ap.add_argument("--scope", nargs="+", action="extend", default=[], metavar="me|project:<이름>")
     ap.add_argument("--type", choices=sorted(FOLDERS), action="append", dest="types")
     a = ap.parse_args()
-    if not a.knowledge_base:
+    # --scope 는 값을 여러 개 받아서, 지식 베이스 경로를 그 뒤에 주면 경로까지 범위 값으로 들어온다.
+    # 범위 모양(me, project:<이름>)이 아닌 값이 하나이고 경로를 따로 안 줬으면 그 값을 경로로 본다.
+    scopes = [scope for scope in a.scope if SCOPE_RE.match(scope)]
+    strays = [scope for scope in a.scope if not SCOPE_RE.match(scope)]
+    given = a.knowledge_base
+    if given is None and len(strays) == 1 and pathlib.Path(strays[0]).expanduser().is_dir():
+        given, strays = strays[0], []
+    if strays:
+        sys.exit(f"--scope 값이 me나 project:<이름>이 아님: {strays[0]}")
+    given = given or os.environ.get("KNOWLEDGE_BASE_DIR")
+    if not given:
         sys.exit("지식 베이스를 모른다. 인자로 주거나 KNOWLEDGE_BASE_DIR 을 둔다")
-    kb = pathlib.Path(a.knowledge_base).expanduser()
+    kb = pathlib.Path(given).expanduser()
     if not (kb / "raw").is_dir():
         sys.exit(f"지식 베이스가 아님(raw 없음): {kb}")
-    for scope in a.scope:
-        if not SCOPE_RE.match(scope):
-            sys.exit(f"--scope 값이 me나 project:<이름>이 아님: {scope}")
     rows = []
     for kind in a.types or sorted(FOLDERS):
         for p in sorted((kb / FOLDERS[kind]).glob("*.md")):
@@ -79,7 +87,7 @@ def main():
                 continue
             if fm.get("snapshot", "").lower() == "true":
                 continue
-            if a.scope and fm.get("scope") not in a.scope:
+            if scopes and fm.get("scope") not in scopes:
                 continue
             rows.append((fm["id"], one_cell(title_of(fm, text)), one_cell(summary_line(text))))
     for row in sorted(rows):

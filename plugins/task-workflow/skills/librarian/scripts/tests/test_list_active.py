@@ -68,6 +68,21 @@ class ListActiveTest(unittest.TestCase):
         self.assertEqual(self.run_script(self.kb, "--scope", "me", "--scope", "project:other")[1].splitlines(), both)
         self.assertEqual(self.run_script(self.kb, "--scope", "project:none"), (0, "", ""))
 
+    def test_knowledge_base_path_after_scope_is_not_read_as_a_scope(self):
+        want = self.run_script(self.kb, "--scope", "project:app")
+        self.assertEqual(want[0], 0)
+        self.assertEqual(self.run_script("--scope", "project:app", self.kb), want)
+        self.assertEqual(self.run_script("--scope", "me", "project:other", self.kb),
+                         self.run_script(self.kb, "--scope", "me", "project:other"))
+        self.assertEqual(self.run_script("--type", "context", "--scope", "me", self.kb)[1].splitlines()[0][:13], "X-20260105-01")
+        # 경로를 따로 줬으면 범위 자리의 다른 값은 그대로 틀린 범위다
+        code, out, err = self.run_script(self.kb, "--scope", "me", self.kb)
+        self.assertNotEqual(code, 0)
+        self.assertIn("--scope 값이", err)
+        code, out, err = self.run_script("--scope", "me", "everyone")
+        self.assertNotEqual(code, 0)
+        self.assertIn("--scope 값이", err)
+
     def test_type_filter(self):
         out = self.run_script(self.kb, "--type", "context")[1]
         self.assertEqual([line[:13] for line in out.splitlines()], ["X-20260105-01", "X-20260105-03"])
