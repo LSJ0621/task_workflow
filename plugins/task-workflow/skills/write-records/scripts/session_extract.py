@@ -8,6 +8,14 @@
 세션 기록은 <projects-dir>/*/<세션 id>.jsonl 이다. 폴더 이름이 아니라 세션 id로 찾는다.
 pending은 세션 기록을 읽지 않는다. 지식 베이스에 기록할 것이 남았는지만 센다.
 파이썬 표준 라이브러리만 쓴다.
+
+기록 형식은 둘이다.
+- 새 형식: `extract --save <지식 베이스>`로 뽑는다. 발췌 전문은 <지식 베이스>/raw/sessions/<세션 id>.md 에
+  범위 묶음(`<!-- range:start <첫 uuid>..<끝 uuid> -->` ~ `<!-- range:end -->`)으로 한 번만 적고,
+  기록의 표시 사이에 넣을 글(발췌 위치 한 줄, 사용자 말, 도구 줄 가운데 Skill과 Read)을 표준 출력에 찍는다.
+  verify는 표시 사이를 다시 뽑은 그 글과, 발췌 파일의 범위 묶음을 다시 뽑은 전문과 글자 단위로 비교한다.
+- 예전 형식: 표시 사이에 발췌 전문이 통째로 있다. `--save` 없는 extract의 출력이다. verify는 예전과 똑같이 본다.
+표시 사이의 첫 줄이 "발췌: "로 시작하면 새 형식이다.
 """
 
 import argparse
@@ -31,6 +39,13 @@ OMITTED_TEXT = "> [비밀값이 있어 뺌]"
 IMAGE_TEXT = "[이미지]"
 DONE_PREFIX = "정리됨:"  # 메모 파일에서 여기까지 기록했다는 줄. 한 파일에 여러 개 있을 수 있다
 RECORD_DIRS = ("cases", "decisions", "context")
+SESSIONS_DIR = ("raw", "sessions")       # 세션 발췌 파일을 두는 곳. 세션마다 파일 하나
+EXCERPT_PREFIX = "발췌: "                # 새 형식 기록의 표시 사이 첫 줄(발췌 위치)
+RANGE_START_PREFIX = "<!-- range:start "
+RANGE_END = "<!-- range:end -->"
+RANGE_START_RE = re.compile(r"^<!-- range:start (\S+)\.\.(\S+?)(?: omitted:(\S+))? -->$")
+DIGEST_TOOL_RE = re.compile(r"^- (?:Skill|Read)(?:: |$)")  # 기록에 남기는 도구 줄
+KB_ENV = "KNOWLEDGE_BASE_DIR"
 
 # ---------------------------------------------------------------------------
 # 아는 종류 목록. 여기에 없는 종류가 범위 안에 있으면 종료 코드 3을 낸다.
@@ -531,7 +546,8 @@ def find_secret(text):
 # extract
 # ---------------------------------------------------------------------------
 
-def extract_text(projects_dir, session_id, first, last, omitted):
+def extract_blocks(projects_dir, session_id, first, last, omitted):
+    """범위의 묶음을 [(누구, 찍을 글)]로 낸다. 모르는 형식이나 비밀값 모양이 있으면 하나도 내지 않고 오류를 낸다."""
     path = find_session_file(projects_dir, session_id)
     lines = read_lines(path)
     index = {}
@@ -566,27 +582,158 @@ def extract_text(projects_dir, session_id, first, last, omitted):
         timestamp = data.get("timestamp")
         if uuid in omit_set:
             groups = [(who, [OMITTED_TEXT]) for who, _ in groups]
-            blocks.extend(render_groups(groups, timestamp))
+            blocks.extend(zip([who for who, _ in groups], render_groups(groups, timestamp)))
             continue
         rendered = render_groups(groups, timestamp)
         name = find_secret("\n".join(rendered))
         if name:
             secrets.append((uuid, name))
             continue
-        blocks.extend(rendered)
+        blocks.extend(zip([who for who, _ in groups], rendered))
 
     if unknown:
         raise ExtractError(EXIT_UNKNOWN, "\n".join("모르는 형식: %s" % kind for kind in unknown))
     if secrets:
         raise ExtractError(EXIT_SECRET, "\n".join(
             "비밀값 모양(%s): %s" % (name, uuid) for uuid, name in secrets))
-    return "\n\n".join(blocks) + "\n" if blocks else ""
+    return blocks
+
+
+def join_blocks(texts):
+    return "\n\n".join(texts) + "\n" if texts else ""
+
+
+def extract_text(projects_dir, session_id, first, last, omitted):
+    """발췌 전문. 예전 형식 기록의 표시 사이와, 새 형식의 발췌 파일 범위 묶음이 이 글이다."""
+    return join_blocks([text for _, text in extract_blocks(projects_dir, session_id, first, last, omitted)])
+
+
+def excerpt_line(session_id, first, last):
+    return "%sraw/sessions/%s.md %s..%s" % (EXCERPT_PREFIX, session_id, first, last)
+
+
+def digest_text(session_id, first, last, blocks):
+    """새 형식 기록의 표시 사이에 넣는 글. 발췌 위치, 사용자 말, 도구 줄 가운데 Skill과 Read만 남긴다."""
+    kept = [excerpt_line(session_id, first, last)]
+    for who, text in blocks:
+        if who == "사용자":
+            kept.append(text)
+        elif who == "도구":
+            lines = text.split("\n")
+            items = [line for line in lines[1:] if DIGEST_TOOL_RE.match(line)]
+            if items:
+                kept.append("\n".join(lines[:1] + items))
+    return join_blocks(kept)
+
+
+# ---------------------------------------------------------------------------
+# 세션 발췌 파일 (raw/sessions/<세션 id>.md)
+# ---------------------------------------------------------------------------
+
+def sessions_file(base, session_id):
+    return os.path.join(base, *(SESSIONS_DIR + (session_id + ".md",)))
+
+
+def range_start_line(first, last, omitted):
+    extra = " omitted:" + ",".join(sorted(omitted)) if omitted else ""
+    return "%s%s..%s%s -->" % (RANGE_START_PREFIX, first, last, extra)
+
+
+def parse_sections(text, path):
+    """발췌 파일의 범위 묶음들. [{first, last, omitted(집합), start, end(줄 위치), body}]"""
+    lines = text.replace("\r\n", "\n").split("\n")
+    sections = []
+    opened = None
+    for position, line in enumerate(lines):
+        if line.startswith(RANGE_START_PREFIX):
+            match = RANGE_START_RE.match(line)
+            if opened is not None or not match:
+                raise ExtractError(EXIT_MISMATCH, "발췌 파일의 범위 표시가 잘못됨(%d번째 줄): %s" % (position + 1, path))
+            opened = {"first": match.group(1), "last": match.group(2), "start": position,
+                      "omitted": set(filter(None, (match.group(3) or "").split(",")))}
+        elif line == RANGE_END:
+            if opened is None:
+                raise ExtractError(EXIT_MISMATCH, "발췌 파일의 범위 표시가 잘못됨(%d번째 줄): %s" % (position + 1, path))
+            opened["end"] = position
+            opened["body"] = "\n".join(lines[opened["start"] + 1:position])
+            sections.append(opened)
+            opened = None
+    if opened is not None:
+        raise ExtractError(EXIT_MISMATCH, "발췌 파일의 범위 표시가 닫히지 않음: %s" % path)
+    return lines, sections
+
+
+def find_section(sections, first, last, omitted):
+    for section in sections:
+        if (section["first"], section["last"], section["omitted"]) == (first, last, set(omitted)):
+            return section
+    return None
+
+
+def knowledge_base_for_save(path):
+    base = os.path.expanduser(path)
+    if not os.path.isdir(os.path.join(base, "raw", "journal")):
+        raise ExtractError(EXIT_USAGE, "지식 베이스가 아님(raw/journal 없음): %s" % path)
+    return base
+
+
+def save_excerpt(base, session_id, first, last, omitted, full, replace=False):
+    """발췌 전문을 세션 발췌 파일에 범위 묶음으로 적는다. 같은 범위가 이미 있으면 다시 적지 않는다. 한 일을 돌려준다."""
+    path = sessions_file(base, session_id)
+    if os.path.exists(path):
+        lines, sections = parse_sections(read_record(path), path)
+    else:
+        lines, sections = [
+            "# 세션 발췌 %s" % session_id,
+            "",
+            "`session_extract.py extract --save`가 적는 파일이다. 손으로 고치지 않는다.",
+            "범위마다 묶음 하나다. 묶음은 range:start 표시(첫 줄 uuid..끝 줄 uuid)와 range:end 표시 사이다.",
+            "기록은 `## 있었던 일`의 발췌 위치 줄로 이 파일의 묶음을 가리킨다.",
+            "",
+        ], []
+    body = full.strip("\n")
+    same = find_section(sections, first, last, omitted)
+    note = "적음"
+    drop = []
+    if same is not None:
+        if same["body"].strip("\n") == body:
+            return "이미 있음"
+        if not replace:
+            raise ExtractError(EXIT_MISMATCH, "발췌 파일의 그 범위가 다시 뽑은 것과 다름(바꾸려면 --replace): %s" % path)
+        drop.append(same)
+        note = "바꿈"
+    # 같은 범위를 더 많이 빼고 다시 뽑았으면 덜 뺀 묶음은 지운다. 뺀 줄(비밀값)이 파일에 남지 않게 하기 위해서다
+    for section in sections:
+        if (section["first"], section["last"]) == (first, last) and section["omitted"] < set(omitted):
+            drop.append(section)
+            note = "적음(덜 뺀 묶음 %d개 지움)" % len([s for s in drop if s is not same])
+    for section in sorted(drop, key=lambda item: -item["start"]):
+        end = section["end"] + 1
+        if end < len(lines) and lines[end] == "":
+            end += 1
+        del lines[section["start"]:end]
+    while lines and lines[-1] == "":
+        lines.pop()
+    lines += ["", range_start_line(first, last, omitted)] + body.split("\n") + [RANGE_END, ""]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write("\n".join(lines))
+    return note
 
 
 def cmd_extract(args):
     omitted = [uuid for group in (args.omit or []) for uuid in group]
-    text = extract_text(projects_dir_of(args), args.session, args.first, args.last, omitted)
-    sys.stdout.write(text)
+    if args.replace and not args.save:
+        raise ExtractError(EXIT_USAGE, "--replace는 --save와 함께 쓴다")
+    base = knowledge_base_for_save(args.save) if args.save else None
+    blocks = extract_blocks(projects_dir_of(args), args.session, args.first, args.last, omitted)
+    full = join_blocks([text for _, text in blocks])
+    if base is None:
+        sys.stdout.write(full)
+        return EXIT_OK
+    note = save_excerpt(base, args.session, args.first, args.last, omitted, full, args.replace)
+    sys.stderr.write("발췌 파일: raw/sessions/%s.md (%s)\n" % (args.session, note))
+    sys.stdout.write(digest_text(args.session, args.first, args.last, blocks))
     return EXIT_OK
 
 
@@ -768,33 +915,73 @@ def marked_block(text):
     return "\n".join(lines[start + 1:end])
 
 
-def verify_record(path, projects_dir):
+def compare_lines(have, want, where, name):
+    """줄 단위로 글자까지 같아야 한다. 다르면 처음 다른 줄을 알리고 종료 코드 5를 낸다."""
+    if have == want:
+        return
+    for number in range(max(len(have), len(want))):
+        left = have[number] if number < len(have) else None
+        right = want[number] if number < len(want) else None
+        if left != right:
+            raise ExtractError(EXIT_MISMATCH, "%s %d번째 줄부터 다름 (%s %d줄, 다시 뽑은 것 %d줄)" % (
+                where, number + 1, name, len(have), len(want)))
+
+
+def knowledge_base_of(record_path, given):
+    """새 형식 기록의 발췌 파일이 있는 지식 베이스. 준 값, 기록 파일의 위쪽 폴더, 환경 변수 순서로 찾는다."""
+    if given:
+        return os.path.expanduser(given)
+    folder = os.path.dirname(os.path.abspath(record_path))
+    while True:
+        if os.path.isdir(os.path.join(folder, "raw", "journal")):
+            return folder
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            break
+        folder = parent
+    if os.environ.get(KB_ENV):
+        return os.path.expanduser(os.environ[KB_ENV])
+    raise ExtractError(EXIT_USAGE, "지식 베이스를 못 찾음. --knowledge-base로 준다")
+
+
+def verify_record(path, projects_dir, knowledge_base=None):
     """통과하면 설명 글을 돌려준다. 통과 못 하면 ExtractError."""
     text = read_record(path)
     fields = parse_front_matter(text)
     if fields.get("source") == "memo":
         return "source: memo라 대조할 세션 기록이 없음"
+    if fields.get("source") == "agent":
+        # 자가 발전이 스스로 정한 구조 결정 기록. 사용자 말이 없어 처음부터 active로 만든다. 여기서 통과시키지 않는다
+        raise ExtractError(EXIT_USAGE, "source: agent 기록은 verify와 confirm의 대상이 아님")
     session = fields.get("session") or "-"
     span = fields.get("range") or "-"
     block = marked_block(text)
     if session == "-" or ".." not in span or block is None:
         raise ExtractError(EXIT_MISMATCH, "session, range, 표시 두 개가 다 있어야 함")
     first, last = [part.strip() for part in span.split("..", 1)]
-    expected = extract_text(projects_dir, session, first, last, fields.get("omitted") or [])
+    omitted = fields.get("omitted") or []
+    blocks = extract_blocks(projects_dir, session, first, last, omitted)
+    full = join_blocks([part for _, part in blocks])
     have = block.strip("\n").split("\n")
-    want = expected.strip("\n").split("\n")
-    if have != want:
-        for number in range(max(len(have), len(want))):
-            left = have[number] if number < len(have) else None
-            right = want[number] if number < len(want) else None
-            if left != right:
-                raise ExtractError(EXIT_MISMATCH, "표시 사이 %d번째 줄부터 다름 (기록 %d줄, 다시 뽑은 것 %d줄)" % (
-                    number + 1, len(have), len(want)))
-    return "일치"
+    if not have[0].startswith(EXCERPT_PREFIX):
+        # 예전 형식: 표시 사이가 발췌 전문이다
+        compare_lines(have, full.strip("\n").split("\n"), "표시 사이", "기록")
+        return "일치"
+    # 새 형식: 표시 사이는 줄인 글이고 전문은 발췌 파일에 있다. 둘 다 다시 뽑은 것과 같아야 한다
+    compare_lines(have, digest_text(session, first, last, blocks).strip("\n").split("\n"), "표시 사이", "기록")
+    excerpts = sessions_file(knowledge_base_of(path, knowledge_base), session)
+    if not os.path.isfile(excerpts):
+        raise ExtractError(EXIT_MISMATCH, "발췌 파일이 없음: raw/sessions/%s.md" % session)
+    section = find_section(parse_sections(read_record(excerpts), excerpts)[1], first, last, omitted)
+    if section is None:
+        raise ExtractError(EXIT_MISMATCH, "발췌 파일에 그 범위(와 같은 omitted)의 묶음이 없음: raw/sessions/%s.md %s..%s" % (
+            session, first, last))
+    compare_lines(section["body"].strip("\n").split("\n"), full.strip("\n").split("\n"), "발췌 파일의 범위 묶음", "발췌 파일")
+    return "일치(표시 사이와 발췌 파일)"
 
 
 def cmd_verify(args):
-    note = verify_record(args.record, projects_dir_of(args))
+    note = verify_record(args.record, projects_dir_of(args), getattr(args, "knowledge_base", None))
     sys.stdout.write("통과\t%s\t%s\n" % (args.record, note))
     return EXIT_OK
 
@@ -823,7 +1010,7 @@ def cmd_confirm(args):
     result = EXIT_OK
     for path in args.records:
         try:
-            verify_record(path, projects_dir_of(args))
+            verify_record(path, projects_dir_of(args), getattr(args, "knowledge_base", None))
             note = set_active(path)
             sys.stdout.write("통과\t%s\t%s\n" % (path, note))
         except ExtractError as error:
@@ -914,14 +1101,20 @@ def build_parser():
     extract.add_argument("--from", dest="first", required=True)
     extract.add_argument("--to", dest="last", required=True)
     extract.add_argument("--omit", nargs="+", action="append", metavar="UUID")
+    extract.add_argument("--save", metavar="지식 베이스",
+                         help="발췌 전문을 raw/sessions/<세션 id>.md에 적고, 기록의 표시 사이에 넣을 글을 찍는다")
+    extract.add_argument("--replace", action="store_true",
+                         help="--save와 함께. 같은 범위의 묶음이 다시 뽑은 것과 다르면 바꾼다")
     extract.set_defaults(run=cmd_extract)
 
     verify = commands.add_parser("verify", parents=[shared], help="기록 파일을 다시 뽑은 것과 비교한다")
     verify.add_argument("record")
+    verify.add_argument("--knowledge-base", help="새 형식 기록의 발췌 파일이 있는 지식 베이스 (기본: 기록 파일의 위쪽 폴더)")
     verify.set_defaults(run=cmd_verify)
 
     confirm = commands.add_parser("confirm", parents=[shared], help="verify가 통과한 기록을 active로 바꾼다")
     confirm.add_argument("records", nargs="+")
+    confirm.add_argument("--knowledge-base", help="새 형식 기록의 발췌 파일이 있는 지식 베이스 (기본: 기록 파일의 위쪽 폴더)")
     confirm.set_defaults(run=cmd_confirm)
 
     pending = commands.add_parser("pending", parents=[shared], help="정리 안 된 메모 줄 수와 draft 기록 수를 찍는다")

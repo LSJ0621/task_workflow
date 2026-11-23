@@ -29,6 +29,7 @@ FIRST, LAST = uid(1), uid(45)
 
 def run(args, projects=FIXTURES, tz="Asia/Seoul"):
     env = dict(os.environ, TZ=tz, PYTHONIOENCODING="utf-8")
+    env.pop("KNOWLEDGE_BASE_DIR", None)  # 시험이 이 컴퓨터의 지식 베이스를 보지 않게 한다
     done = subprocess.run(
         [sys.executable, SCRIPT, "--projects-dir", projects] + list(args),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -524,6 +525,221 @@ class VerifyConfirmTest(TempProjects):
         self.assertEqual(run(["verify", path], projects=self.projects)[0], 0)
         self.assertEqual(run(["confirm", path], projects=self.projects)[0], 0)
         self.assertIn("status: active\nsource: memo", self.read(path))
+
+
+class SaveExcerptTest(TempProjects):
+    """새 형식. 발췌 전문은 지식 베이스의 raw/sessions/<세션 id>.md에 한 번만 적고, 기록에는 줄인 글만 넣는다."""
+
+    def setUp(self):
+        TempProjects.setUp(self)
+        self.session_path = self.copy_fixture()
+        self.kb = os.path.join(self.tmp, "kb")
+        for folder in ("journal", "cases"):
+            os.makedirs(os.path.join(self.kb, "raw", folder))
+        self.excerpts = os.path.join(self.kb, "raw", "sessions", SID + ".md")
+        code, self.full, err = extract(projects=self.projects)
+        self.assertEqual(code, 0, err)
+
+    def read(self, path):
+        with open(path, encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def save(self, first=FIRST, last=LAST, extra=()):
+        return extract(first, last, extra=["--save", self.kb] + list(extra), projects=self.projects)
+
+    def kb_record(self, body, name="C-20260105-01-fake.md", **kwargs):
+        path = self.write_record(body, name=name, **kwargs)
+        target = os.path.join(self.kb, "raw", "cases", name)
+        shutil.move(path, target)
+        return target
+
+    def verify(self, record, extra=()):
+        return run(["verify", record] + list(extra), projects=self.projects)
+
+    def test_save_prints_user_text_skill_read_and_location_only(self):
+        code, out, err = self.save(FIRST, uid(11))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, (
+            "발췌: raw/sessions/%s.md %s..%s\n"
+            "\n"
+            "**사용자** (10:00)\n"
+            "> 목록 화면의 줄 간격을 넓혀 줘.\n"
+            ">\n"
+            "> 지금은 너무 좁아.\n"
+            "\n"
+            "**도구** (10:01)\n"
+            "- Skill: fake-plugin:build-screens\n"
+            "\n"
+            "**도구** (10:01)\n"
+            "- Read: /fake/home/proj-a/src/list_screen.txt\n"
+        ) % (SID, FIRST, uid(11)))
+        self.assertIn("raw/sessions/%s.md" % SID, err)
+
+    def test_digest_drops_agent_text_and_other_tools(self):
+        code, out, _ = self.save()
+        self.assertEqual(code, 0)
+        self.assertNotIn("**에이전트**", out)
+        for word in ("- Bash", "- Edit", "- Write", "- Agent", "- mcp__fake__lookup", "MARKER"):
+            self.assertNotIn(word, out)
+        # 한 줄에 Read와 Agent를 같이 부른 묶음은 Read 줄만 남는다
+        self.assertIn("**도구** (10:28)\n- Read: /fake/home/proj-a/src/title.txt\n", out)
+        # 사용자 말은 전문과 똑같이 다 있다
+        for block in self.full.strip("\n").split("\n\n"):
+            if block.startswith("**사용자**"):
+                self.assertIn(block, out)
+
+    def test_full_excerpt_is_written_once_per_range(self):
+        self.assertEqual(self.save()[0], 0)
+        text = self.read(self.excerpts)
+        self.assertTrue(text.startswith("# 세션 발췌 %s\n" % SID))
+        self.assertIn("<!-- range:start %s..%s -->\n%s<!-- range:end -->\n" % (FIRST, LAST, self.full), text)
+        code, out, err = self.save()
+        self.assertEqual(code, 0)
+        self.assertIn("이미 있음", err)
+        self.assertEqual(self.read(self.excerpts), text)
+        self.assertEqual(text.count("<!-- range:start "), 1)
+
+    def test_other_range_is_appended_and_first_one_is_untouched(self):
+        self.save(FIRST, uid(11))
+        before = self.read(self.excerpts)
+        self.assertEqual(self.save(uid(26), uid(33))[0], 0)
+        after = self.read(self.excerpts)
+        self.assertTrue(after.startswith(before))
+        self.assertEqual(after.count("<!-- range:start "), 2)
+        self.assertIn("<!-- range:start %s..%s -->" % (uid(26), uid(33)), after)
+
+    def test_plain_extract_is_unchanged_and_writes_nothing(self):
+        code, out, _ = extract(projects=self.projects)
+        self.assertEqual(out, self.full)
+        self.assertFalse(os.path.exists(self.excerpts))
+
+    def test_save_needs_a_knowledge_base(self):
+        code, out, _ = extract(extra=["--save", self.tmp], projects=self.projects)
+        self.assertEqual((code, out), (1, ""))
+        self.assertEqual(extract(extra=["--replace"], projects=self.projects)[0], 1)
+
+    def test_nothing_is_written_when_extract_fails(self):
+        shape = "s" + "k-" + "abcDEF0123456789abcDEF"
+        self.write_session([human(1, "앞 글"), human(2, "이걸 써: " + shape)])
+        code, out, _ = run(["extract", "--session", SID2, "--from", uid(1), "--to", uid(2), "--save", self.kb],
+                           projects=self.projects)
+        self.assertEqual((code, out), (4, ""))
+        self.assertFalse(os.path.exists(os.path.join(self.kb, "raw", "sessions", SID2 + ".md")))
+
+    def test_verify_passes_for_new_format(self):
+        record = self.kb_record(self.save()[1])
+        code, out, err = self.verify(record)
+        self.assertEqual(code, 0, err)
+        self.assertIn("통과", out)
+        self.assertIn("발췌 파일", out)
+
+    def test_verify_fails_when_digest_differs_by_one_character(self):
+        digest = self.save()[1]
+        for changed in (
+            digest.replace("너무 좁아", "너무 좁아!"),
+            digest.replace("- Skill: fake-plugin:build-screens\n", "- Skill: fake-plugin:build-screen\n"),
+            digest.replace("**도구** (10:01)\n- Read: /fake/home/proj-a/src/list_screen.txt\n\n", ""),
+            digest + "\n**사용자** (09:01)\n> 하지 않은 말\n",
+            digest + "\n**에이전트** (09:02)\n> 기록에 넣지 않는 말\n",
+            digest.replace(SID + ".md", SID2 + ".md"),
+        ):
+            self.assertNotEqual(changed, digest)
+            self.assertEqual(self.verify(self.kb_record(changed))[0], 5)
+
+    def test_verify_fails_when_excerpt_file_differs(self):
+        record = self.kb_record(self.save()[1])
+        text = self.read(self.excerpts)
+        for changed in (
+            text.replace("먼저 화면 파일을 보겠습니다", "먼저 화면 파일을 봤습니다"),
+            text.replace("**도구** (10:03)\n- mcp__fake__lookup\n\n", ""),
+            text.replace("<!-- range:end -->", "\n**사용자** (09:01)\n> 하지 않은 말\n<!-- range:end -->"),
+            text.replace("%s..%s" % (FIRST, LAST), "%s..%s" % (FIRST, uid(23))),
+        ):
+            self.assertNotEqual(changed, text)
+            with open(self.excerpts, "w", encoding="utf-8", newline="") as handle:
+                handle.write(changed)
+            self.assertEqual(self.verify(record)[0], 5)
+        os.remove(self.excerpts)
+        self.assertEqual(self.verify(record)[0], 5)
+
+    def test_verify_fails_when_range_in_header_differs(self):
+        digest = self.save()[1]
+        self.assertEqual(self.verify(self.kb_record(digest, last=uid(23)))[0], 5)
+
+    def test_verify_when_session_record_is_gone(self):
+        record = self.kb_record(self.save()[1])
+        os.remove(self.session_path)
+        self.assertEqual(self.verify(record)[0], 2)
+
+    def test_verify_finds_knowledge_base_from_option_when_record_is_elsewhere(self):
+        outside = self.write_record(self.save()[1])
+        self.assertEqual(self.verify(outside)[0], 1)
+        self.assertEqual(self.verify(outside, ["--knowledge-base", self.kb])[0], 0)
+
+    def test_omitted_range_is_its_own_block_and_replaces_the_less_omitted_one(self):
+        self.save(FIRST, uid(11))
+        plain = self.kb_record(self.save(FIRST, uid(11))[1], last=uid(11), name="C-20260105-02-fake.md")
+        self.assertEqual(self.verify(plain)[0], 0)
+        code, digest, err = self.save(FIRST, uid(11), extra=["--omit", uid(5)])
+        self.assertEqual(code, 0, err)
+        text = self.read(self.excerpts)
+        self.assertIn("<!-- range:start %s..%s omitted:%s -->" % (FIRST, uid(11), uid(5)), text)
+        self.assertEqual(text.count("<!-- range:start "), 1)
+        self.assertNotIn("먼저 화면 파일을", text)
+        self.assertIn("> [비밀값이 있어 뺌]", text)
+        record = self.kb_record(digest, last=uid(11), omitted="[%s]" % uid(5))
+        self.assertEqual(self.verify(record)[0], 0)
+        # 머리말의 omitted가 다르면 그 묶음을 못 찾는다
+        self.assertEqual(self.verify(plain)[0], 5)
+
+    def test_replace_rewrites_a_block_that_no_longer_matches(self):
+        self.save(FIRST, uid(11))
+        text = self.read(self.excerpts)
+        with open(self.excerpts, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace("먼저 화면 파일을 보겠습니다", "바뀐 글"))
+        code, out, err = self.save(FIRST, uid(11))
+        self.assertEqual((code, out), (5, ""))
+        self.assertIn("--replace", err)
+        self.assertEqual(self.save(FIRST, uid(11), extra=["--replace"])[0], 0)
+        self.assertEqual(self.read(self.excerpts), text)
+
+    def test_confirm_new_format_changes_only_the_status_word(self):
+        record = self.kb_record(self.save()[1])
+        before = self.read(record)
+        excerpts = self.read(self.excerpts)
+        code, out, err = run(["confirm", record], projects=self.projects)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.read(record), before.replace("status: draft ", "status: active ", 1))
+        self.assertEqual(self.read(self.excerpts), excerpts)
+        self.assertEqual(self.verify(record)[0], 0)
+
+    def test_confirm_leaves_new_format_record_alone_when_excerpt_file_is_wrong(self):
+        record = self.kb_record(self.save()[1])
+        before = self.read(record)
+        with open(self.excerpts, "w", encoding="utf-8", newline="") as handle:
+            handle.write(self.read(self.excerpts).replace("그대로 두겠습니다", "그대로 둘게요"))
+        code, out, _ = run(["confirm", record], projects=self.projects)
+        self.assertEqual(code, 5)
+        self.assertEqual(self.read(record), before)
+        self.assertIn("실패(코드 5)", out)
+
+    def test_old_format_record_in_same_knowledge_base_still_verifies(self):
+        self.save()
+        old = self.kb_record(self.full, name="C-20260105-03-fake.md")
+        code, out, err = self.verify(old)
+        self.assertEqual(code, 0, err)
+        self.assertIn("\t일치\n", out)
+        self.assertEqual(self.verify(self.kb_record(self.full.replace("너무 좁아", "너무 좁아!"),
+                                                    name="C-20260105-04-fake.md"))[0], 5)
+
+    def test_agent_record_is_not_verified_or_confirmed(self):
+        path = os.path.join(self.kb, "raw", "cases", "D-agent.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("---\nid: D-20260105-09\nstatus: draft\nsource: agent\ntags: [structure]\n---\n# 제목\n")
+        before = self.read(path)
+        self.assertEqual(self.verify(path)[0], 1)
+        self.assertEqual(run(["confirm", path], projects=self.projects)[0], 1)
+        self.assertEqual(self.read(path), before)
 
 
 class FindListTest(TempProjects):
