@@ -209,14 +209,22 @@ class RepeatTest(Base):
         self.edit(STYLE.replace("결론부터 쓴다.", "결론부터 쓴다. 왜를 붙인다."), "설명 순서 1\n\n" + EVOLVE, "2026-01-03T09:00:00")
         self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 2\n\n누가 정했나: 자가 발전", "2026-01-04T09:00:00")
 
-    def test_third_sentence_edit_of_a_section_by_self_evolve_is_blocked(self):
+    def repeated(self, *args, **kwargs):
+        """(종료 코드, 되풀이 알림이 났는지). 되풀이는 막지 않고 알림만 낸다."""
+        code, blocks, notices, _ = self.check(*args, **kwargs)
+        self.assertFalse(any(line.startswith("같은 절 되풀이") for line in blocks))
+        return code, any(line.startswith("같은 절 되풀이") for line in notices)
+
+    def test_third_sentence_edit_of_a_section_by_self_evolve_is_only_a_notice(self):
+        # 다른 방식으로 고쳐 쓰거나 틀린 문장을 빼는 것까지 막지 않으려고 알림만 낸다
         self.twice()
         self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
-        code, blocks, _, _ = self.check()
-        self.assertEqual(code, 1)
-        self.assertEqual(len(blocks), 1)
-        self.assertIn('같은 절 되풀이: output-styles/style.md "설명 순서" 절을 자가 발전이 2025-12-11부터 이미 2번 고쳤다', blocks[0])
-        self.assertIn("구조 조치", blocks[0])
+        code, blocks, notices, _ = self.check()
+        self.assertEqual((code, blocks), (0, []))
+        hit = [line for line in notices if line.startswith("같은 절 되풀이")]
+        self.assertEqual(len(hit), 1)
+        self.assertIn('같은 절 되풀이: output-styles/style.md "설명 순서" 절을 자가 발전이 2025-12-11부터 이미 2번 고쳤다', hit[0])
+        self.assertIn("막지 않는다", hit[0])
 
     def test_second_edit_and_other_sections_pass(self):
         self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 1\n\n" + EVOLVE, "2026-01-03T09:00:00")
@@ -255,18 +263,18 @@ class RepeatTest(Base):
     def test_only_edits_inside_the_window_are_counted(self):
         self.twice()   # 자가 발전이 2026-01-03과 2026-01-04에 고쳤다
         self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
-        self.assertEqual(self.check(today="2026-02-02")[0], 1)          # 30일 전은 01-03. 두 번 다 창 안이다
-        self.assertEqual(self.check(today="2026-02-03")[:2], (0, []))   # 30일 전은 01-04. 한 번만 창 안이다
-        self.assertEqual(self.check(today="2026-06-01")[:2], (0, []))   # 오래 지나면 다시 고칠 수 있다
+        self.assertEqual(self.repeated(today="2026-02-02"), (0, True))    # 30일 전은 01-03. 두 번 다 창 안이다
+        self.assertEqual(self.repeated(today="2026-02-03"), (0, False))   # 30일 전은 01-04. 한 번만 창 안이다
+        self.assertEqual(self.repeated(today="2026-06-01"), (0, False))   # 오래 지나면 알림도 없다
 
     def test_window_length_comes_from_the_limits_file(self):
         self.twice()
         self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
-        self.assertEqual(self.check(today="2026-02-20")[:2], (0, []))
+        self.assertEqual(self.repeated(today="2026-02-20"), (0, False))
         self.set_limit(edits_window_days=60)
-        code, blocks, _, _ = self.check(today="2026-02-20")
-        self.assertEqual(code, 1)
-        self.assertIn("2025-12-22부터 이미 2번", blocks[0])
+        code, _, notices, _ = self.check(today="2026-02-20")
+        self.assertEqual(code, 0)
+        self.assertTrue(any("2025-12-22부터 이미 2번" in line for line in notices))
         self.set_limit(edits_window_days=0)
         self.assertEqual(self.check()[0], 2)
 
@@ -274,12 +282,12 @@ class RepeatTest(Base):
         self.twice()
         self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
         self.set_limit(edits_since="2026-01-04")            # 창의 시작(2025-12-11)보다 늦다. 01-04의 한 번만 센다
-        self.assertEqual(self.check()[:2], (0, []))
+        self.assertEqual(self.repeated(), (0, False))
         self.set_limit(edits_since="2026-01-03")
-        self.assertEqual(self.check()[0], 1)
+        self.assertEqual(self.repeated(), (0, True))
         self.set_limit(edits_since="2025-01-01")            # 창의 시작보다 이르면 창의 시작부터 센다
-        self.assertEqual(self.check(today="2026-02-03")[:2], (0, []))
-        self.assertEqual(self.check(today="2026-02-02")[0], 1)
+        self.assertEqual(self.repeated(today="2026-02-03"), (0, False))
+        self.assertEqual(self.repeated(today="2026-02-02"), (0, True))
         self.set_limit(edits_since="작년")
         self.assertEqual(self.check()[0], 2)
 
@@ -427,7 +435,9 @@ class WhoDecidedTest(Base):
         self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 1\n\n   " + EVOLVE + ".", "2026-01-03T09:00:00")
         self.edit(STYLE.replace("결론부터 쓴다.", "결론만 쓴다."), "설명 순서 2\n\n근거: 없음\n누가 정했나: 자가 발전", "2026-01-04T09:00:00")
         self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
-        self.assertEqual(self.check()[0], 1)
+        code, blocks, notices, _ = self.check()
+        self.assertEqual((code, blocks), (0, []))
+        self.assertTrue(any(line.startswith("같은 절 되풀이") for line in notices))   # 두 커밋 다 자가 발전으로 셌다
 
     def test_audit_reads_who_from_the_line_not_the_sentence(self):
         self.git("tag", "review-1")
@@ -538,12 +548,13 @@ class AuditTest(Base):
             self.write("output-styles/style.md", STYLE.replace(line, "%d번 고친 줄." % number))   # 글자 수는 그대로다
             self.commit("설명 순서 %d\n\n%s" % (number, EVOLVE), date=day + "T09:00:00")
         code, out, err = self.audit("--knowledge-base", self.kb)
-        self.assertEqual(code, 1, err)
-        heads = [row.split(" | ")[1] for row in out.splitlines() if " | " in row]
-        # 3번째(03-01)는 앞의 두 번이 30일 창 밖이라 어김이 아니다. 5번째(03-06)는 창 안에 3·4번째가 있다
-        self.assertEqual(heads, ["설명 순서 5"])
-        self.assertIn("2026-02-04부터 이미 2번", out)
-        self.assertIn("어긴 커밋 1개(어김 1건)", out)
+        self.assertEqual(code, 0, err)   # 되풀이는 어김이 아니라 알림이다
+        # 3번째(03-01)는 앞의 두 번이 30일 창 밖이라 알림이 없다. 5번째(03-06)는 창 안에 3·4번째가 있다
+        hits = [row for row in out.splitlines() if "같은 절 되풀이" in row]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("[알림]", hits[0])
+        self.assertIn("2026-02-04부터 이미 2번", hits[0])
+        self.assertIn("설명 순서 5", out)
 
     def merged_branch(self, message):
         """main 에 직접 한 구조 커밋 하나와, 구조 커밋 둘이 든 브랜치를 머지 커밋으로 합친 이력을 만든다."""
