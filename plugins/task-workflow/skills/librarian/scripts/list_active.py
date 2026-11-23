@@ -57,7 +57,7 @@ def one_cell(value):
     return " ".join(value.replace("|", "/").split())
 
 def main():
-    ap = argparse.ArgumentParser(description="지금 유효한 결정과 맥락을 id | 제목 | 요지 첫 줄로 찍는다")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("knowledge_base", nargs="?", default=os.environ.get("KNOWLEDGE_BASE_DIR"))
     ap.add_argument("--scope", nargs="+", action="extend", default=[], metavar="me|project:<이름>")
     ap.add_argument("--type", choices=sorted(FOLDERS), action="append", dest="types")
