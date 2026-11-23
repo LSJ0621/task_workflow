@@ -290,10 +290,12 @@ class StructureTest(Base):
         self.write("hooks/guard.py", "print('x')\n")
         code, blocks, _, _ = self.check()
         self.assertEqual(code, 1)
-        self.assertIn("구조 결정 기록: 구조 파일(hooks/guard.py)을 건드렸는데 결정 기록 id가 없다", blocks)
+        self.assertEqual(blocks, ['구조 결정 기록: 구조를 바꿨는데(hooks/guard.py) 결정 기록 id가 없다. '
+                                  '형식은 사서 스킬 기록 규칙의 "구조 결정 기록" 절'])
         code, blocks, _, _ = self.check("--decision", "D-20260105-09")
         self.assertEqual(code, 1)
         self.assertIn("D-20260105-09이 지식 베이스 raw/decisions/ 에 없다", blocks[0])
+        self.assertIn('형식은 사서 스킬 기록 규칙의 "구조 결정 기록" 절', blocks[0])
         self.assertEqual(self.check("--decision", "D-20260105-01")[:2], (0, []))
         self.assertEqual(self.check(extra={"RULE_CHANGE_DECISION": "D-20260105-01"})[:2], (0, []))
 
@@ -326,6 +328,115 @@ class StructureTest(Base):
         self.write("settings.json", "{}\n")
         self.write("skills/helper/references/more.md", "## 더\n- 글.\n")
         self.assertEqual(self.check()[:2], (0, []))
+
+
+class StructureScopeTest(Base):
+    """4번 검사는 구조를 더하거나 지우거나 옮긴 것만 막는다. 있는 스크립트를 고치는 것은 알림만 낸다."""
+
+    def setUp(self):
+        Base.setUp(self)
+        for rel in ("hooks/guard.py", "hooks/hooks.json", "bin/tool", "skills/helper/scripts/run.py",
+                    "skills/daily-upkeep/SKILL.md", "scheduled-tasks/daily/SKILL.md", "agents/checker.md",
+                    "plugins/p/skills/daily-upkeep/SKILL.md", "plugins/p/skills/s/scripts/run.py", "plugins/p/hooks/hooks.json",
+                    "mods/monitor/hooks/register.py"):
+            self.write(rel, "# 처음\n\n## 절\n- 처음 글.\n")
+        self.commit("구조 파일들\n\n" + USER)
+
+    def change(self, rel):
+        self.write(rel, "# 처음\n\n## 절\n- 고친 글.\n")
+
+    def test_editing_an_existing_script_or_hook_is_only_a_notice(self):
+        for rel in ("hooks/guard.py", "bin/tool", "skills/helper/scripts/run.py", "plugins/p/skills/s/scripts/run.py"):
+            self.change(rel)
+            code, blocks, notices, _ = self.check()
+            self.assertEqual((code, blocks), (0, []), rel)
+            self.assertEqual(notices, ["구조 파일 수정: 있는 구조 파일을 고치기만 했다(%s). 결정 기록 없이 통과시킨다" % rel])
+            # 결정 기록을 주면 알림도 없다
+            self.assertEqual(self.check("--decision", "D-20260105-01")[:3], (0, [], []))
+            self.git("reset", "-q", "--hard")
+
+    def test_editing_flow_files_needs_a_decision_record(self):
+        for rel in ("skills/daily-upkeep/SKILL.md", "plugins/p/skills/daily-upkeep/SKILL.md", "scheduled-tasks/daily/SKILL.md",
+                    "hooks/hooks.json", "plugins/p/hooks/hooks.json"):
+            self.change(rel)
+            code, blocks, _, _ = self.check()
+            self.assertEqual(code, 1, rel)
+            self.assertIn("구조 결정 기록", blocks[-1])
+            self.assertEqual(self.check("--decision", "D-20260105-01")[0], 0, rel)
+            self.git("reset", "-q", "--hard")
+
+    def test_editing_skill_and_agent_documents_is_a_rule_change_not_a_structure_change(self):
+        self.change("skills/helper/SKILL.md")
+        self.change("agents/checker.md")
+        self.assertEqual(self.check()[:3], (0, [], []))
+
+    def test_adding_removing_or_moving_in_structure_folders_is_blocked(self):
+        self.git("rm", "-q", "hooks/guard.py")
+        self.assertEqual(self.check()[0], 1)
+        self.git("reset", "-q", "--hard")
+        self.git("mv", "skills/helper/scripts/run.py", "skills/helper/scripts/go.py")
+        self.assertEqual(self.check()[0], 1)
+        self.git("reset", "-q", "--hard")
+        self.git("mv", "agents/checker.md", "agents/verifier.md")
+        self.assertEqual(self.check()[0], 1)
+
+    def test_tests_and_hooks_folders_elsewhere_are_not_structure(self):
+        for rel in ("skills/helper/scripts/tests/test_run.py", "hooks/tests/test_guard.py", "plugins/p/hooks/tests/test_x.py",
+                    "mods/monitor/hooks/new.py", "mods/monitor/bin/tool", "plugins/p/bin/tool", "docs/scripts/x.py",
+                    "skills/helper/references/scripts/x.py"):
+            self.write(rel, "x\n")
+        self.change("mods/monitor/hooks/register.py")
+        self.assertEqual(self.check()[:3], (0, [], []))
+
+    def test_audit_uses_the_same_scope(self):
+        self.git("tag", "review-1")
+        self.change("skills/helper/scripts/run.py")
+        self.commit("스크립트 버그를 고친다\n\n" + EVOLVE, date="2026-01-03T09:00:00")
+        self.change("mods/monitor/hooks/register.py")
+        self.commit("모니터를 고친다", date="2026-01-04T09:00:00")
+        self.change("hooks/hooks.json")
+        self.commit("훅 등록을 고친다\n\n" + EVOLVE, date="2026-01-05T09:00:00")
+        self.write("skills/helper/scripts/new.py", "x\n")
+        self.commit("스크립트를 더한다 D-20260105-01\n\n" + EVOLVE, date="2026-01-06T09:00:00")
+        code, out, err = self.script("--audit", "--since", "review-1", "--repo", self.repo, "--limits", self.limits,
+                                     "--knowledge-base", self.kb)
+        self.assertEqual(code, 1, err)
+        heads = [row.split(" | ")[1] for row in out.splitlines() if " | " in row]
+        self.assertEqual(heads, ["스크립트 버그를 고친다", "훅 등록을 고친다"])
+        self.assertEqual(len([row for row in out.splitlines() if "[알림] 구조 파일 수정" in row]), 1)
+        self.assertEqual(len([row for row in out.splitlines() if "[어김] 구조 결정 기록" in row]), 1)
+        self.assertEqual(out.splitlines()[-1],
+                         "요약: 규칙 문서나 구조 파일을 건드린 커밋 3개, 어긴 커밋 1개(어김 1건), 알림 1건, 누가 정했는지 없는 커밋 0개")
+
+
+class WhoDecidedTest(Base):
+    """누가 정했는지는 그 말로 시작하는 줄만 본다. 설명 문장 가운데에 나온 말은 보지 않는다."""
+
+    def edit(self, text, message, date):
+        self.write("output-styles/style.md", text)
+        self.commit(message, date=date)
+
+    def test_phrase_inside_a_sentence_does_not_make_a_self_evolve_commit(self):
+        told = '검사 스크립트: 자가 발전의 커밋인지는 메시지의 "누가 정했는지: 자가 발전"으로 안다.\n\n  ' + USER
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 1\n\n" + told, "2026-01-03T09:00:00")
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론만 쓴다."), "설명 순서 2\n\n" + told, "2026-01-04T09:00:00")
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check()[:2], (0, []))
+
+    def test_line_with_leading_spaces_and_old_wording_still_counts(self):
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 1\n\n   " + EVOLVE + ".", "2026-01-03T09:00:00")
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론만 쓴다."), "설명 순서 2\n\n근거: 없음\n누가 정했나: 자가 발전", "2026-01-04T09:00:00")
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check()[0], 1)
+
+    def test_audit_reads_who_from_the_line_not_the_sentence(self):
+        self.git("tag", "review-1")
+        self.write("CLAUDE.md", GUIDE + "- 사용자가 더한 줄.\n")
+        self.commit('전역 지침: 줄을 더한다\n\n설명에 "누가 정했는지: 자가 발전"이라는 말이 나온다.\n' + USER, date="2026-01-03T09:00:00")
+        code, out, err = self.script("--audit", "--since", "review-1", "--repo", self.repo, "--limits", self.limits)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("2026-01-03 사용자 | 전역 지침: 줄을 더한다", out)
+        self.assertIn("[알림] 글자 수", out)
 
 
 class HookTest(Base):

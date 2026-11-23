@@ -26,8 +26,12 @@
    창은 검사하는 날(오늘, 또는 --today)에서 edits_window_days 일 전부터다. 전체 이력으로 세면 한두 번 고친 절이 영영 막혀서다.
    edits_since 가 있으면 창의 시작과 그 날짜 가운데 더 늦은 날부터 센다. 날짜는 커밋의 작성 날짜다.
    사후 검사는 커밋마다 그 커밋을 한 날을 기준으로 같은 창을 쓴다.
-   자가 발전이 고친 커밋인지는 커밋 메시지의 "누가 정했는지: 자가 발전"(예전 문구 "누가 정했나:"도 본다)으로 안다.
-4. 구조 결정 기록: 구조 파일을 건드렸는데 결정 기록 id가 없거나 그 기록이 지식 베이스 raw/decisions/ 에 없으면 막는다.
+   자가 발전이 고친 커밋인지는 커밋 메시지에서 "누가 정했는지:"(예전 문구 "누가 정했나:"도 본다)로 시작하는 줄로 안다.
+   줄 앞의 공백은 괜찮다. 문장 가운데에 그 말이 나오는 것은 보지 않는다. 그런 줄이 여럿이면 마지막 줄을 쓴다.
+4. 구조 결정 기록: 구조를 더하거나 지우거나 옮겼는데 결정 기록 id가 없거나 그 기록이 지식 베이스 raw/decisions/ 에 없으면 막는다.
+   구조 폴더에 파일을 더하거나 지우거나 옮긴 것과, 새벽 흐름과 훅 등록을 정하는 파일을 고친 것이 여기에 든다.
+   구조 폴더의 있는 파일(스크립트, 훅)을 고치기만 한 것은 막지 않고 알림만 낸다. 버그를 고치는 것까지 막지 않기 위해서다.
+   결정 기록의 형식은 사서 스킬 기록 규칙의 "구조 결정 기록" 절에 있다.
 
 - 누가 정했는지는 --who 로 준다. 안 주면 환경 변수 RULE_CHANGE_WHO, 그것도 없으면 evolve(자가 발전)다.
   사용자가 정한 변경(--who user)은 1~3을 알림으로만 낸다. 4는 누가 정했든 막는다.
@@ -51,8 +55,11 @@
 무엇을 규칙 문서와 구조 파일로 보나
 - 규칙 문서: 한도 파일의 chars 에 적힌 파일, 지침 파일(CLAUDE.md, AGENTS.md), 스킬 문서(SKILL.md), 스킬의 references/ 아래 md,
   서브에이전트 정의(agents/*.md), 응답 양식(output-styles/*.md). assets/ 아래는 뺀다.
-- 구조 파일: hooks/, scripts/, bin/, scheduled-tasks/ 아래의 모든 파일과, 더하거나 지우거나 옮긴
-  스킬 문서(SKILL.md)와 서브에이전트 정의(agents/*.md).
+- 구조 폴더: 스킬 문서(skills/<스킬>/SKILL.md), 서브에이전트 정의(agents/), 훅(hooks/), 스킬의 스크립트(skills/<스킬>/scripts/).
+  저장소 맨 위에 있거나 플러그인 폴더(plugins/<이름>/) 바로 아래에 있는 것만 본다. mods/ 같은 다른 폴더 안의 hooks/ 는 보지 않는다.
+  저장소 맨 위의 bin/ 과 scheduled-tasks/ 도 구조 폴더다. 시험 폴더(tests/) 아래는 어디든 뺀다.
+- 고치기만 해도 결정 기록이 있어야 하는 파일: skills/daily-upkeep/SKILL.md(새벽 흐름), scheduled-tasks/ 아래 지시문, hooks/hooks.json(훅 등록).
+- 스킬 문서와 서브에이전트 정의의 문장을 고치는 것은 규칙 문서 수정이라 1~3으로 보고, 구조 파일 수정 알림은 내지 않는다.
 """
 import argparse, collections, datetime, json, os, pathlib, re, stat, subprocess, sys
 
@@ -62,12 +69,13 @@ DEFAULT_WINDOW_DAYS = 30
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 WHO_ENV, DECISION_ENV, LIMITS_ENV, KB_ENV = "RULE_CHANGE_WHO", "RULE_CHANGE_DECISION", "RULE_CHANGE_LIMITS", "KNOWLEDGE_BASE_DIR"
 WHO_NAMES = {"evolve": "자가 발전", "user": "사용자"}
-WHO_RE = re.compile(r"누가 정했(?:는지|나)\s*:\s*(자가 발전|사용자)")
+WHO_RE = re.compile(r"^[ \t]*누가 정했(?:는지|나)[ \t]*:[ \t]*(자가 발전|사용자)", re.M)   # 줄이 이 말로 시작할 때만
 DECISION_RE = re.compile(r"\bD-\d{8}-\d{2}\b")
 EXAMPLE_RE = re.compile(r"(?<![가-힣])예\s*:")
 HEADING_RE = re.compile(r"^## +(.+?)\s*$")
 TOP = "(첫 제목 앞)"
-STRUCTURE_DIRS = {"hooks", "scripts", "bin", "scheduled-tasks"}
+PLUGIN_PREFIX_RE = re.compile(r"^plugins/[^/]+/")
+DECISION_GUIDE = "형식은 사서 스킬 기록 규칙의 \"구조 결정 기록\" 절"
 RULE_DOC_NAMES = {"SKILL.md", "CLAUDE.md", "AGENTS.md"}   # 어느 폴더에 있든 규칙 문서인 파일 이름
 HOOK_MARK = "task-workflow:check_rule_change"
 
@@ -215,16 +223,37 @@ def is_rule_doc(path, limits, repo):
         return True
     return len(parts) >= 2 and parts[-2] in ("agents", "output-styles")
 
-def is_structure(kind, old, new):
-    for path in {old, new}:
-        parts = pathlib.PurePosixPath(path).parts
-        if "__pycache__" in parts:
-            continue
-        if STRUCTURE_DIRS & set(parts[:-1]):
-            return True
-        if kind in "ADR" and (parts[-1] == "SKILL.md" or (len(parts) >= 2 and parts[-2] == "agents" and path.endswith(".md"))):
-            return True
-    return False
+def structure_place(path):
+    """구조 폴더 안의 파일이면 플러그인 접두(plugins/<이름>/)를 뗀 경로, 아니면 None."""
+    parts = pathlib.PurePosixPath(path).parts
+    if "tests" in parts or "__pycache__" in parts:
+        return None
+    prefix = PLUGIN_PREFIX_RE.match(path)
+    rel = path[prefix.end():] if prefix else path
+    cut = pathlib.PurePosixPath(rel).parts
+    if len(cut) == 3 and cut[0] == "skills" and cut[2] == "SKILL.md":
+        return rel
+    if len(cut) >= 4 and cut[0] == "skills" and cut[2] == "scripts":
+        return rel
+    if len(cut) >= 2 and cut[0] in ("agents", "hooks"):
+        return rel
+    if not prefix and len(cut) >= 2 and cut[0] in ("bin", "scheduled-tasks"):
+        return rel
+    return None
+
+def is_flow_file(place):
+    """고치기만 해도 결정 기록이 있어야 하는 파일. 새벽 흐름과 훅 등록을 정한다."""
+    return place in ("skills/daily-upkeep/SKILL.md", "hooks/hooks.json") or place.startswith("scheduled-tasks/")
+
+def structure_change(kind, old, new):
+    """"block"(결정 기록이 있어야 한다) | "notice"(있는 구조 파일을 고치기만 했다) | None(구조와 상관없다)"""
+    places = [place for place in (structure_place(path) for path in {old, new}) if place]
+    if not places:
+        return None
+    if kind != "M" or any(is_flow_file(place) for place in places):
+        return "block"
+    # 스킬 문서와 서브에이전트 정의의 문장 수정은 규칙 문서 수정이다. 1~3이 본다
+    return None if new.endswith(".md") else "notice"
 
 # ---------------------------------------------------------------------------
 # 검사
@@ -245,12 +274,16 @@ def self_evolve_edits(repo, path, section, before_rev, start):
         commit, day, message = chunk.strip("\n").split("\x1f", 2)
         if day < start:
             continue   # 창 밖의 수정은 세지 않는다
-        m = WHO_RE.search(message)
-        if not m or m.group(1) != "자가 발전":
+        if who_decided(message) != "자가 발전":
             continue
         if section in edited_sections(show(repo, f"{commit}^:{path}"), show(repo, f"{commit}:{path}")):
             hits.append(commit[:7])
     return hits
+
+def who_decided(message):
+    """커밋 메시지에서 "누가 정했는지:"로 시작하는 마지막 줄의 값("자가 발전" | "사용자"). 없으면 None."""
+    found = WHO_RE.findall(message)
+    return found[-1] if found else None
 
 def decision_exists(kb, rid):
     folder = kb / "raw" / "decisions"
@@ -260,10 +293,11 @@ def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
     """(막을 것, 알림, 구조 파일) 세 목록. who 가 user 면 1~3은 알림이 된다. day 는 검사하는 날(사후 검사는 그 커밋을 한 날)."""
     blocks, notices = [], []
     soft = notices if who == "user" else blocks
-    structure = []
+    structure, modified = [], []
     for kind, old, new, before, after in changes:
-        if is_structure(kind, old, new):
-            structure.append(new)
+        change = structure_change(kind, old, new)
+        if change:
+            (structure if change == "block" else modified).append(new)
         if kind == "D" or after is None or not is_rule_doc(new, limits, repo):
             continue
         # 1. 글자 수
@@ -289,16 +323,22 @@ def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
                         f"같은 절 되풀이: {new} \"{name}\" 절을 자가 발전이 {window_start(limits, day)}부터 "
                         f"이미 {len(hits)}번 고쳤다({', '.join(hits)}). "
                         "문장을 더 고치지 말고 구조 조치(훅, 스크립트, 스킬 나누기)를 하거나 상태 파일에 올린다")
-    # 4. 구조 파일에는 결정 기록
+    # 4. 구조를 더하거나 지우거나 옮겼으면 결정 기록
+    known = kb is not None and any(decision_exists(kb, rid) for rid in decisions)
     if structure:
         listed = structure[0] + (f" 등 {len(structure)}개" if len(structure) > 1 else "")
         if not decisions:
-            blocks.append(f"구조 결정 기록: 구조 파일({listed})을 건드렸는데 결정 기록 id가 없다")
+            blocks.append(f"구조 결정 기록: 구조를 바꿨는데({listed}) 결정 기록 id가 없다. {DECISION_GUIDE}")
         elif kb is None:
-            blocks.append(f"구조 결정 기록: 지식 베이스를 몰라 결정 기록({', '.join(decisions)})이 있는지 볼 수 없다")
-        elif not any(decision_exists(kb, rid) for rid in decisions):
-            blocks.append(f"구조 결정 기록: 결정 기록 {', '.join(decisions)}이 지식 베이스 raw/decisions/ 에 없다(구조 파일 {listed})")
-    return blocks, notices, structure
+            blocks.append(f"구조 결정 기록: 지식 베이스를 몰라 결정 기록({', '.join(decisions)})이 있는지 볼 수 없다"
+                          f"(구조 파일 {listed}). {DECISION_GUIDE}")
+        elif not known:
+            blocks.append(f"구조 결정 기록: 결정 기록 {', '.join(decisions)}이 지식 베이스 raw/decisions/ 에 없다"
+                          f"(구조 파일 {listed}). {DECISION_GUIDE}")
+    if modified and not known:
+        listed = modified[0] + (f" 등 {len(modified)}개" if len(modified) > 1 else "")
+        notices.append(f"구조 파일 수정: 있는 구조 파일을 고치기만 했다({listed}). 결정 기록 없이 통과시킨다")
+    return blocks, notices, structure + modified
 
 def knowledge_base(given):
     value = given or os.environ.get(KB_ENV)
@@ -376,13 +416,13 @@ def cmd_audit(a):
     broken = found = noted = unmarked = looked = 0
     for commit, day, message in commits:
         changes = commit_changes(repo, commit)
-        touched = [c for c in changes if is_structure(c[0], c[1], c[2])
+        touched = [c for c in changes if structure_change(c[0], c[1], c[2])
                    or (c[0] != "D" and is_rule_doc(c[2], limits, repo))]
         if not touched:
             continue
         looked += 1
-        m = WHO_RE.search(message)
-        who = "user" if m and m.group(1) == "사용자" else "evolve"
+        m = who_decided(message)
+        who = "user" if m == "사용자" else "evolve"
         has_parent = git(repo, "rev-parse", "--verify", "-q", f"{commit}^") is not None
         decisions = DECISION_RE.findall(message) + covered.get(commit, [])
         blocks, notices, _ = examine(repo, changes, limits, who, decisions, kb,
