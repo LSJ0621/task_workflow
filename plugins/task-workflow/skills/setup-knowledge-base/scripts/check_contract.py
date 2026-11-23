@@ -4,7 +4,9 @@
 사용: check_contract.py <지식 베이스 폴더>
 종료 코드 0 = 두 가지 모두 통과. 1 = 하나라도 실패.
 필수: 색인(INDEX.md), 메모 위치(raw/journal/).
-권장 항목(지식 베이스 안내 CLAUDE.md, 맥락 요약 wiki/context.md, 상황판 wiki/board.md, 규칙별 사례표 wiki/rule-cases.md, git 저장소)은 실패로 치지 않는다.
+권장 항목(지식 베이스 안내 CLAUDE.md, 맥락 요약 wiki/context.md, 상황판 wiki/board.md, 자가 발전 폴더 evolve/,
+규칙별 사례표 evolve/rule-cases.md, 세션 발췌 폴더 raw/sessions/, git 저장소)은 실패로 치지 않는다.
+규칙별 사례표와 추정 기록이 예전 위치(wiki/rule-cases.md, wiki/hypotheses.md)에 있으면 경고만 한다. 지금 위치는 evolve/ 다.
 규칙과 틀은 플러그인 스킬 안에 있으므로 지식 베이스에 규칙 문서는 두지 않는다.
 """
 import pathlib, subprocess, sys
@@ -30,8 +32,15 @@ def main():
         ("지식 베이스 안내", (kb / "CLAUDE.md").exists(), "CLAUDE.md"),
         ("맥락 요약", (kb / "wiki" / "context.md").exists(), "wiki/context.md"),
         ("상황판", (kb / "wiki" / "board.md").exists(), "wiki/board.md"),
-        ("규칙별 사례표", (kb / "wiki" / "rule-cases.md").exists(), "wiki/rule-cases.md"),
+        ("자가 발전 폴더", (kb / "evolve").is_dir(), "evolve/"),
+        ("규칙별 사례표", (kb / "evolve" / "rule-cases.md").exists(), "evolve/rule-cases.md"),
+        ("세션 발췌 폴더", (kb / "raw" / "sessions").is_dir(), "raw/sessions/"),
         ("git 저장소", is_git(kb), "git init"),
+    ]
+    # 예전 위치에 남아 있는 파일. 지금 위치로 옮기라고 경고만 한다.
+    moved = [
+        ("규칙별 사례표", kb / "wiki" / "rule-cases.md", "evolve/rule-cases.md"),
+        ("추정 기록", kb / "wiki" / "hypotheses.md", "evolve/hypotheses.md"),
     ]
     # 권장 항목이 있어도 지금 초안과 모양이 다르면 경고만 한다. 실패로 치지 않는다.
     shape = [
@@ -41,7 +50,7 @@ def main():
          "프로젝트 묶음 형식(어디까지·다음 할 일·막힌 것·고친 날짜)이 아니다"),
         ("맥락 요약", kb / "wiki" / "context.md", "## 모든 프로젝트에 걸린 결정",
          "끝에 \"## 모든 프로젝트에 걸린 결정\" 절이 없다"),
-        ("규칙별 사례표", kb / "wiki" / "rule-cases.md", "| 사례 | 한 줄 요약 | 관련 규칙 | 규칙과 관계 |",
+        ("규칙별 사례표", kb / "evolve" / "rule-cases.md", "| 사례 | 한 줄 요약 | 관련 규칙 | 규칙과 관계 |",
          "표 머리가 | 사례 | 한 줄 요약 | 관련 규칙 | 규칙과 관계 | 이 아니다"),
     ]
     ok = True
@@ -54,6 +63,9 @@ def main():
     for name, path, needle, msg in shape:
         if path.is_file() and needle not in path.read_text(encoding="utf-8"):
             print(f"  [경고] 권장 · {name} — {msg}")
+    for name, old, new in moved:
+        if old.is_file():
+            print(f"  [경고] 권장 · {name} — 예전 위치({old.relative_to(kb)})에 있다. 지금 위치는 {new} 다")
     sys.exit(0 if ok else 1)
 
 if __name__ == "__main__":
