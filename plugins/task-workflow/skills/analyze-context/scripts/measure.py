@@ -22,9 +22,12 @@
                   작업 세션 가운데 색인(INDEX.md), 요약(wiki/context.md), 카드(wiki/projects/*.md),
                   원본(raw/cases, raw/decisions, raw/context)을 읽은 세션의 비율(%). Read, Grep, 그리고 cat·grep 같은 읽는 셸 명령을 본다.
 - rule_chars      늘 읽히는 규칙 파일의 글자 수. 그 주 끝(이번 주는 지금) 기본 브랜치에 커밋된 내용이다. {경로: 글자 수}
-- plugin_md_chars 플러그인 폴더의 md 전체 글자 수. 같은 시점이다.
+- plugin_md_chars 플러그인 폴더의 md 전체 글자 수. 같은 시점이다. 플러그인 저장소를 못 찾으면 이번 주만
+                  이 스크립트가 든 플러그인 폴더(설치본)에서 세고 지난 주는 비운다.
 - evolve_commits  자가 발전 커밋 수. 규칙 저장소와 플러그인 저장소에서 그 주에 한 커밋 가운데 메시지에
-                  "누가 정했는지: 자가 발전"(예전 문구 "누가 정했나:"도 본다)이 있고 규칙 문서(위 규칙 파일, 플러그인의 md)를 건드린 것.
+                  "누가 정했는지: 자가 발전"(예전 문구 "누가 정했나:"도 본다)으로 시작하는 줄이 있고
+                  규칙 문서(위 규칙 파일, 플러그인의 md)를 건드린 것. 문장 가운데에 그 말이 나오는 것은 세지 않는다.
+                  두 저장소 가운데 하나라도 못 찾으면 비운다. 한쪽만 센 수를 전체처럼 적지 않기 위해서다.
 - evolve_shrinking 그중 건드린 규칙 문서의 글자 수 합이 줄어든 커밋 수.
 - memo_lines      메모 줄 수. raw/journal/ 의 그 주 날짜 파일에서 `HH:MM | `로 시작하는 줄.
 읽을 수 없는 값(저장소가 없다 같은 것)은 표에 `-`, JSON에 null 로 적는다.
@@ -34,8 +37,10 @@
 - 세션 기록에서 지식 베이스로 볼 경로: --read-root(여러 번 줄 수 있다), 없으면 지식 베이스의 실제 경로와 $KNOWLEDGE_BASE_DIR
 - 규칙 저장소와 규칙 파일: --rules-repo 와 --rule-files, 없으면 한도 파일(--limits, $RULE_CHANGE_LIMITS,
   <Claude 설정 폴더>/evolve/limits.json)의 root 와 chars, 그것도 없으면 Claude 설정 폴더의 CLAUDE.md 와 output-styles/*.md
-- 플러그인 저장소: --plugin-repo, 없으면 이 스크립트가 든 git 저장소, 설치본이라 git 저장소가 아니면
-  지식 베이스의 플러그인 카드(wiki/projects/<플러그인 이름>.md)에 적힌 저장소 위치
+- 플러그인 저장소: --plugin-repo, 없으면 $PLUGIN_REPO_DIR, 없으면 지식 베이스의 플러그인 카드
+  (wiki/projects/<플러그인 이름>.md)에 적힌 저장소 위치, 없으면 이 스크립트가 든 git 저장소.
+  마지막 것은 그 저장소가 이 파일을 추적할 때만 쓴다. 설치본 폴더는 Claude 설정 저장소 안에 있어서,
+  그냥 쓰면 설정 저장소가 플러그인 저장소로 잡히기 때문이다. 못 찾으면 표준 오류에 알린다.
 """
 import argparse, collections, datetime, importlib.util, json, os, pathlib, re, subprocess, sys
 
@@ -61,7 +66,8 @@ NOTES = [
     "- 메모 줄: `raw/journal/`의 그 주 날짜 파일에 적힌 메모 줄 수.",
     "- `-`는 읽을 수 없었던 값이다.",
 ]
-WHO_RE = re.compile(r"누가 정했(?:는지|나)\s*:\s*(자가 발전|사용자)")
+WHO_RE = re.compile(r"^[ \t]*누가 정했(?:는지|나)[ \t]*:[ \t]*(자가 발전|사용자)", re.M)   # 줄이 이 말로 시작할 때만
+PLUGIN_REPO_ENV = "PLUGIN_REPO_DIR"
 MEMO_RE = re.compile(r"^\d{1,2}:\d{2} \| ")
 REPO_LINE_RE = re.compile(r"^- (?:저장소|위치):(.*)$", re.M)
 BACKTICK_RE = re.compile(r"`([^`\s]+)`")
@@ -172,9 +178,9 @@ def evolve_commits(repo, branch, is_rule_doc, first_day, weeks):
         if "\x1f" not in chunk:
             continue
         commit, when, message = chunk.strip("\n").split("\x1f", 2)
-        m = WHO_RE.search(message)
+        who = WHO_RE.findall(message)   # 그런 줄이 여럿이면 마지막 줄을 쓴다
         week = week_start(local_day(when)) if local_day(when) else None
-        if not m or m.group(1) != "자가 발전" or week not in counts:
+        if not who or who[-1] != "자가 발전" or week not in counts:
             continue
         changed = git(repo, "diff-tree", "-r", "--root", "--no-commit-id", "--name-status", "-M", commit) or ""
         before, after = [], []
@@ -231,11 +237,41 @@ def card_repo(kb, name):
                 return pathlib.Path(token).expanduser()
     return None
 
+def tracks(repo, path):
+    """repo 가 그 파일을 추적하는가. 설치본은 Claude 설정 저장소 안에 있지만 추적되지 않는다."""
+    try:
+        rel = pathlib.Path(path).resolve().relative_to(pathlib.Path(repo).resolve())
+    except ValueError:
+        return False
+    return git(repo, "ls-files", "--error-unmatch", "--", str(rel)) is not None
+
 def find_plugin_repo(given, kb):
+    """플러그인 저장소의 체크아웃. 인자, 환경 변수, 지식 베이스의 플러그인 카드, 이 스크립트가 든 저장소 순서로 찾는다.
+    이 스크립트가 든 저장소는 그 저장소가 이 파일을 추적할 때만 쓴다. 설치본 폴더는 Claude 설정 저장소 안이라
+    그냥 쓰면 설정 저장소가 플러그인 저장소로 잡힌다. 못 찾으면 None."""
+    here = pathlib.Path(__file__).resolve()
     if given:
         return toplevel(pathlib.Path(given).expanduser())
-    here = pathlib.Path(__file__).resolve()
-    return toplevel(here.parent) or toplevel(card_repo(kb, plugin_name(here.parents[3])))
+    if os.environ.get(PLUGIN_REPO_ENV):
+        return toplevel(pathlib.Path(os.environ[PLUGIN_REPO_ENV]).expanduser())
+    found = toplevel(card_repo(kb, plugin_name(here.parents[3])))
+    if found:
+        return found
+    own = toplevel(here.parent)
+    return own if own and tracks(own, here) else None
+
+def installed_md_chars():
+    """이 스크립트가 든 플러그인 폴더의 md 글자 수. 플러그인 저장소를 못 찾았을 때 이번 주 값으로 쓴다."""
+    root = pathlib.Path(__file__).resolve().parents[3]
+    if not ((root / ".claude-plugin" / "plugin.json").is_file() or (root / "plugin.json").is_file()):
+        return None
+    total = 0
+    for path in root.rglob("*.md"):
+        try:
+            total += len(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return total
 
 def load_extractor():
     """기록 스크립트(session_extract.py). 무엇이 사람이 친 글인지를 한 곳에서만 정하려고 그 판정을 빌려 쓴다."""
@@ -543,7 +579,16 @@ def main():
         targets.append((plugin_repo, plugin_branch,
                         lambda path: path.endswith(".md") and (not roots or any(path.startswith(root) for root in roots))))
     evolve = {week: None for week in weeks}
-    for repo, branch, is_rule in targets:
+    have_rules, have_plugin = bool(rules_repo and rules_branch), bool(plugin_repo and plugin_branch)
+    if not have_rules:
+        sys.stderr.write("알림: 규칙 저장소를 못 찾았다(--rules-repo, 한도 파일의 root, Claude 설정 폴더 순서로 찾는다). "
+                         "규칙 파일 글자 수와 자가 발전 커밋 수를 비워 둔다\n")
+    if not have_plugin:
+        sys.stderr.write("알림: 플러그인 저장소를 못 찾았다(--plugin-repo, $%s, 지식 베이스의 플러그인 카드, 이 스크립트가 든 저장소 "
+                         "순서로 찾는다). 자가 발전 커밋 수를 비워 두고, 플러그인 md 글자 수는 이번 주만 이 스크립트가 든 "
+                         "플러그인 폴더에서 센다\n" % PLUGIN_REPO_ENV)
+    # 두 저장소를 다 읽었을 때만 센다. 한쪽만 센 수를 전체인 것처럼 적지 않기 위해서다
+    for repo, branch, is_rule in targets if have_rules and have_plugin else []:
         for week, (total, shrinking) in evolve_commits(repo, branch, is_rule, weeks[0], weeks).items():
             evolve[week] = [(evolve[week] or [0, 0])[0] + total, (evolve[week] or [0, 0])[1] + shrinking]
 
@@ -561,6 +606,8 @@ def main():
             rev = rev_at(plugin_repo, plugin_branch, day_after)
             if rev:
                 plugin_chars = sum(blob_chars(plugin_repo, rev, plugin_md_paths(tree_paths(plugin_repo, rev))).values())
+        elif week == weeks[-1]:
+            plugin_chars = installed_md_chars()
         count = len(work[week])
         share = lambda kind: round(100 * sum(1 for s in work[week] if kind in s["reads"]) / count) if count else None
         rows.append({

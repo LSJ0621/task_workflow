@@ -260,8 +260,91 @@ class MeasureTest(unittest.TestCase):
         last = json.loads(done.stdout.decode("utf-8"))["weeks"][0]
         self.assertEqual((last["messages"], last["work_sessions"], last["read_index"]), (0, 0, None))
         self.assertEqual((last["rule_chars"], last["plugin_md_chars"], last["evolve_commits"]), (None, None, None))
+        self.assertIn("규칙 저장소를 못 찾았다", done.stderr.decode("utf-8"))
+        self.assertIn("플러그인 저장소를 못 찾았다", done.stderr.decode("utf-8"))
         self.assertEqual((last["cases"], last["memo_lines"]), (2, 2))
         self.assertEqual(self.table_rows()[0][1:], ["0", "2", "-", "0", "-", "-", "-", "-", "-", "-", "-", "-", "-", "2"])
+
+    # -- 설치본에서 돌릴 때 -------------------------------------------------
+
+    def installed_copy(self):
+        """Claude 설정 저장소 안의 추적되지 않는 폴더에 플러그인을 설치한 모양을 만든다. (설정 저장소, 설치본의 measure.py)"""
+        config = os.path.join(self.tmp, "config")
+        root = os.path.join(config, "plugins", "cache", "market", "fake-plugin", "0.1.0")
+        scripts = os.path.join(root, "skills", "analyze-context", "scripts")
+        os.makedirs(scripts)
+        os.makedirs(os.path.join(root, "skills", "write-records", "scripts"))
+        shutil.copy(SCRIPT, scripts)
+        shutil.copy(os.path.join(os.path.dirname(HERE), "..", "..", "write-records", "scripts", "session_extract.py"),
+                    os.path.join(root, "skills", "write-records", "scripts"))
+        self.write(root, ".claude-plugin/plugin.json", '{"name": "fake-plugin"}')
+        self.write(root, "skills/analyze-context/SKILL.md", "사" * 70)
+        self.write(root, "README.md", "아" * 35)
+        self.git(config, "init", "-q", "-b", "main")
+        self.write(config, ".gitignore", "plugins/\n")
+        self.commit(config, "2026-01-02", "설정 저장소", {"CLAUDE.md": "가" * 100})
+        return config, os.path.join(scripts, "measure.py")
+
+    def run_installed(self, script, config, *args, env=None):
+        full = dict(os.environ, TZ="Asia/Seoul", CLAUDE_CONFIG_DIR=config)
+        for name in ("KNOWLEDGE_BASE_DIR", "RULE_CHANGE_LIMITS", "PLUGIN_REPO_DIR"):
+            full.pop(name, None)
+        full.update(env or {})
+        done = subprocess.run([sys.executable, script, self.kb, "--today", TODAY, "--json", "--no-write",
+                               "--projects-dir", self.projects] + list(args),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=full)
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8"))
+        return json.loads(done.stdout.decode("utf-8"))["weeks"], done.stderr.decode("utf-8")
+
+    def test_installed_copy_does_not_take_the_config_repository_for_the_plugin_repository(self):
+        config, script = self.installed_copy()
+        (last, this), err = self.run_installed(script, config)
+        self.assertIn("플러그인 저장소를 못 찾았다", err)
+        # 설정 저장소의 md(CLAUDE.md 100자)를 플러그인 md로 세지 않는다. 이번 주만 설치본 폴더(70자 + 35자)에서 센다
+        self.assertEqual((last["plugin_md_chars"], this["plugin_md_chars"]), (None, 105))
+        self.assertEqual((last["evolve_commits"], last["evolve_shrinking"], this["evolve_commits"]), (None, None, None))
+        self.assertEqual(last["rule_chars"], {"CLAUDE.md": 100})
+        self.assertEqual(last["messages"], 5)
+
+    def test_installed_copy_finds_the_plugin_repository_from_the_project_card(self):
+        config, script = self.installed_copy()
+        self.write(self.kb, "wiki/projects/fake-plugin.md", "# fake-plugin\n\n- 저장소: `%s` (GitHub `fake/plugin`)\n" % self.plugin)
+        (last, this), err = self.run_installed(script, config, "--rules-repo", self.rules)
+        self.assertNotIn("못 찾았다", err)
+        self.assertEqual((last["plugin_md_chars"], this["plugin_md_chars"]), (390, 450))
+        self.assertEqual((last["evolve_commits"], last["evolve_shrinking"]), (3, 1))
+
+    def test_installed_copy_takes_the_plugin_repository_from_environment_or_argument(self):
+        config, script = self.installed_copy()
+        (last, _), err = self.run_installed(script, config, "--rules-repo", self.rules, env={"PLUGIN_REPO_DIR": self.plugin})
+        self.assertEqual((last["plugin_md_chars"], last["evolve_commits"]), (390, 3))
+        self.assertNotIn("못 찾았다", err)
+        other = os.path.join(self.tmp, "other-plugin")
+        os.makedirs(other)
+        self.git(other, "init", "-q", "-b", "main")
+        self.commit(other, "2026-01-02", "다른 저장소", {"README.md": "자" * 11})
+        (last, _), _ = self.run_installed(script, config, "--rules-repo", self.rules, "--plugin-repo", other,
+                                          env={"PLUGIN_REPO_DIR": self.plugin})
+        self.assertEqual(last["plugin_md_chars"], 11)   # 인자가 환경 변수보다 먼저다
+
+    def test_checkout_copy_uses_its_own_repository(self):
+        # 이 시험 파일이 든 저장소(플러그인 저장소의 체크아웃)에서는 인자 없이도 그 저장소를 찾는다
+        full = dict(os.environ, TZ="Asia/Seoul", CLAUDE_CONFIG_DIR=os.path.join(self.tmp, "없는-설정"))
+        for name in ("KNOWLEDGE_BASE_DIR", "RULE_CHANGE_LIMITS", "PLUGIN_REPO_DIR"):
+            full.pop(name, None)
+        done = subprocess.run([sys.executable, SCRIPT, self.kb, "--today", TODAY, "--json", "--no-write",
+                               "--projects-dir", self.projects], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=full)
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8"))
+        err = done.stderr.decode("utf-8")
+        self.assertNotIn("플러그인 저장소를 못 찾았다", err)
+        self.assertIn("규칙 저장소를 못 찾았다", err)
+
+    def test_who_decided_is_read_from_a_line_that_starts_with_it(self):
+        told = '설명에 "누가 정했는지: 자가 발전"이라는 말이 나오는 사용자 커밋\n\n' + USER
+        self.commit(self.rules, "2026-01-10", told, {"CLAUDE.md": "가" * 120})
+        self.commit(self.rules, "2026-01-11", "줄 앞에 공백이 있는 자가 발전 커밋\n\n  " + EVOLVE + ".", {"CLAUDE.md": "가" * 110})
+        last = self.weeks("--no-write")[0]
+        self.assertEqual((last["evolve_commits"], last["evolve_shrinking"]), (4, 2))
 
     def test_errors(self):
         self.assertEqual(self.measure(kb=self.tmp)[0], 1)
