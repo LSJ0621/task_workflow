@@ -5,7 +5,7 @@ title:
 date: YYYY-MM-DD
 scope: me             # me | project:<이름>
 domain: common
-status: draft          # draft(확인 전) | active | superseded
+status: draft          # draft(확인 전) | active | superseded | archived
 source: session        # session(스크립트가 세션 기록에서 뽑음) | memo(메모에서 옮김. 세션 기록을 못 찾았거나 예전 기록)
 session:               # 세션 id. 없으면 -
 range:                 # <첫 줄 uuid>..<끝 줄 uuid>. 없으면 -
@@ -41,6 +41,7 @@ related: []
 
 - `source: memo`면 `## 있었던 일`에 메모의 있었던 일과 `사용자 말:`을 그대로 옮기고 표시 두 줄은 두지 않는다. `session: -`, `range: -`.
 - 결정에는 `## 분석` 절이 없다.
+- 구조를 바꾼 결정을 직접 쓸 때는 이 틀이 아니라 `records.md` "구조 결정 기록" 절의 꼴로 쓴다.
 - 예전 기록의 일부만 바꾸는 결정이면 `### 결정` 끝에 "예전 기록 <id>의 이 부분을 바꾼다"고 한 줄 적는다.
 
 ## 예시 (가상, 형식 참고용)

@@ -5,7 +5,7 @@ title:
 date: YYYY-MM-DD
 scope: me             # me | project:<이름>
 domain: life          # work(일·목표) | life(일정·생활) | taste(소통 방식·선호·성향) | tools(기기·구독·실행 환경)
-status: draft          # draft(확인 전) | active | superseded
+status: draft          # draft(확인 전) | active | superseded | archived
 source: session        # session(스크립트가 세션 기록에서 뽑음) | memo(메모에서 옮김. 세션 기록을 못 찾았거나 예전 기록)
 session:               # 세션 id. 없으면 -
 range:                 # <첫 줄 uuid>..<끝 줄 uuid>. 없으면 -
