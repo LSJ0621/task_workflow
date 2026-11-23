@@ -10,7 +10,7 @@
 | 원본 | `raw/` | 추가만 한다. 확정된 뒤에는 고치지 않는다 | 요약으로 부족할 때, 요약에 적힌 id를 따라 그 기록만 |
 | 요약 문서 | `wiki/` | 원본에서 만들어져서 언제든 다시 만들 수 있다. 맥락 요약(`wiki/context.md`), 프로젝트 카드. 지금 판단에 쓰는 `active` 기록만 올린다 | 작업 세션이 필요할 때 찾아 읽는다 |
 | 상황판 | `wiki/board.md` | 프로젝트마다 지금 어디까지 왔는지. 덮어쓴다. 지난 내용은 git 이력에 있다 | 작업을 이어 갈 때 |
-| 자가 발전 문서 | `evolve/` | 규칙별 사례표(`rule-cases.md`), 추정 기록(`hypotheses.md`, 끝난 것은 `hypotheses-archive.md`), 측정값(`metrics.md`) | 자가 발전과 점검 보고. 작업 세션은 읽지 않는다 |
+| 자가 발전 문서 | `evolve/` | 규칙별 사례표(`rule-cases.md`), 추정 기록(`hypotheses.md`, 끝난 것은 `hypotheses-archive.md`), 측정값(`metrics.md`). 자가 발전(`analyze-context` 스킬)이 쓰고 추정 기록과 측정값의 형식도 그 스킬에 있다. 사서는 쓰지 않는다 | 자가 발전과 점검 보고. 작업 세션은 읽지 않는다 |
 
 `raw/` 아래 폴더는 메모 `journal/`, 사례 `cases/`, 결정 `decisions/`, 맥락 `context/`, 세션 발췌 `sessions/`, 점검 보고서 `reviews/`, 예전 아침 보고서 `reports/`, 예전 기록 `archive/`다. `sessions/`는 세션 기록에서 뽑은 글 전체를 두는 곳이다. 세션마다 파일 하나이고 스크립트만 적는다. 에이전트의 말까지 봐야 할 때만 읽는다. 점검 보고서는 아래 "점검 보고서" 절을 따른다. `reports/`와 `archive/`에는 예전 구조에서 쓰던 기록(예: 아침 보고서, 검수 결과)이 있다. 새로 쓰지 않는다. `raw/` 아래라 점검 스크립트는 그 안의 지난 id를 계속 인식한다.
 
@@ -129,7 +129,7 @@ related: []             # 관련 기록 id 목록
   - `archived`: 보관. 지금 판단에 쓰지 않지만 있었던 일로 남긴다. 파일은 그 자리에 둔다.
 - `archived_reason`은 넷 중 하나다. `done`은 끝난 일이거나 없어진 구조에 대한 결정이다. `in-rules`는 같은 내용이 규칙 문서에 있다. `project-doc`은 프로젝트 문서에 둘 내용이다. `expired`는 기한이 지났다. `in-rules`와 `project-doc`이면 `moved_to`에 지금 그 내용이 있는 위치를 적는다.
 - `valid_until`: 기한이 있는 맥락에 `YYYY-MM-DD`로 적는다. 지나면 점검 스크립트가 알린다.
-- 점검 스크립트는 아래를 문제로 본다. `archived`인데 `archived_reason`이 없거나 넷 중 하나가 아니다. `in-rules`나 `project-doc`인데 `moved_to`가 없다. `valid_until`이 날짜 꼴이 아니다. 구조 결정 기록(`type: decision`, `tags`에 `structure`)이 아닌데 `source: agent`다. 발췌 위치 줄이 가리키는 파일이나 범위 묶음이 없다.
+- 점검 스크립트는 위 세 칸이 이 규칙과 다르면 문제로 본다. 구조 결정 기록(`type: decision`, `tags`에 `structure`)이 아닌데 `source: agent`인 것과, 발췌 위치 줄이 가리키는 파일이나 범위 묶음이 없는 것도 문제다.
 - `source`: `## 있었던 일`이 어디서 왔는지다. `session`이면 표시 사이가 전부 스크립트 출력이고 `session`과 `range`가 꼭 있다. `memo`면 메모에서 옮긴 글이고 표시가 없으며 `session: -`, `range: -`다. 예전 기록은 모두 `memo`다. `agent`는 아래 "구조 결정 기록" 절에 있다.
 - `range`: 뽑은 범위의 첫 줄과 끝 줄 uuid를 `..`으로 잇는다. `omitted`는 그 범위에서 비밀값 때문에 뺀 줄의 uuid다. 이 세 칸(`session`, `range`, `omitted`)으로 스크립트가 같은 글을 다시 뽑아 비교한다(`verify`). 그래서 손으로 고치지 않는다.
 - `memo`: 이 기록이 나온 메모 줄의 날짜와 시각이다. 메모의 풀이나 관련 칸을 다시 봐야 할 때 이 칸으로 찾는다.
@@ -197,11 +197,6 @@ related: []             # 관련 기록 id 목록
   - `## 바뀐 것`: 파일과 커밋.
 - 구조를 건드린 커밋의 메시지에는 이 기록의 id를 적는다.
 - 정리 단계는 다른 결정처럼 카드에 올린다.
-
-## 자가 발전 문서와 예전 아침 보고서
-
-- `evolve/`의 추정 기록과 측정값은 자가 발전(`analyze-context` 스킬)이 쓴다. 추정 기록의 형식은 그 스킬의 `references/hypotheses.md`에 있다. 측정값은 그 스킬의 `scripts/measure.py`가 고친다. 사서는 `evolve/`에 쓰지 않는다.
-- `raw/reports/YYYY-MM-DD.md`는 예전에 자가 발전이 돈 날마다 쓰던 아침 보고서다. 새로 쓰지 않는다. 머리말과 식별자가 없다. 고치지 않고 그대로 둔다.
 
 ## 문서를 나눌지 합칠지
 
