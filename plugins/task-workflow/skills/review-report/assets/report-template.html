@@ -47,6 +47,8 @@
   section.ask { border-left: 5px solid var(--ask); }
   section.see { border-left: 5px solid var(--see); }
   .items { margin: 0; padding: 0; list-style: none; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 6px 8px; border-top: 1px solid var(--line); text-align: left; }
   .items > li { padding: 10px 0; border-top: 1px solid var(--line); }
   .items > li:first-child { border-top: 0; padding-top: 0; }
   .items > li:last-child { padding-bottom: 0; }
@@ -115,19 +117,56 @@
 </header>
 
 <ul class="jump">
-  <li class="ask"><a href="#ask">정할 것 {{RPT_ASK_COUNT}}</a></li>
+  <li><a href="#metrics">측정값</a></li>
+  <li class="see"><a href="#out">벗어난 것 {{RPT_OUT_COUNT}}</a></li>
+  <li><a href="#guard">점검 장치 {{RPT_GUARD_COUNT}}</a></li>
+  <li><a href="#structure">구조 변경 {{RPT_STRUCT_COUNT}}</a></li>
+  <li class="ask"><a href="#ask">올릴 것 {{RPT_ASK_COUNT}}</a></li>
   <li class="see"><a href="#see">볼 것 {{RPT_SEE_COUNT}}</a></li>
   <li><a href="#summary">요약</a></li>
   <li><a href="#flow">변경 흐름</a></li>
   <li><a href="#history">규칙 이력</a></li>
-  <li><a href="#structure">구조 점검</a></li>
   <li><a href="#held">보류한 후보</a></li>
 </ul>
 
-<section class="ask" id="ask">
-  <h2>사용자가 정할 것</h2>
+<section id="metrics">
+  <h2>측정값</h2>
+  <table>
+    <tr><th>측정값</th><th>지난주</th><th>이번 주</th></tr>
+    <!-- 반복: 초안 "측정값"의 줄마다 tr 하나. 검증 표시는 이번 주 칸의 숫자 뒤에 붙인다. -->
+    <tr><td>{{RPT_METRIC_NAME}}</td><td>{{RPT_METRIC_PREV}}</td><td>{{RPT_METRIC_NOW}}</td></tr>
+  </table>
+  <span class="ev">{{RPT_EV}}</span>
+</section>
+
+<section class="see" id="out">
+  <h2>기준에서 벗어난 것</h2>
   <ul class="items">
-    <!-- 반복: 초안 "사용자가 정할 것"의 줄마다 하나. RPT_ASK_KIND 는 보안 규칙, 점검 장치, 이유 못 찾음 중 하나. 초안이 없음이고 검증도 맞음이면 <li class="none">없음</li> 하나만 둔다. -->
+    <!-- 반복: 초안 "기준에서 벗어난 것"의 줄마다 하나. 초안이 없음이고 검증도 맞음이면 <li class="none">없음</li>. -->
+    <li>{{RPT_OUT_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
+  </ul>
+</section>
+
+<section id="guard">
+  <h2>점검 장치를 고친 커밋</h2>
+  <ul class="items">
+    <!-- 반복: 초안 "점검 장치를 고친 커밋"의 줄마다 하나. 초안이 없음이고 검증도 맞음이면 <li class="none">없음</li>. -->
+    <li>{{RPT_GUARD_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
+  </ul>
+</section>
+
+<section id="structure">
+  <h2>구조 변경</h2>
+  <ul class="items">
+    <!-- 반복: 초안 "구조 변경"의 줄마다 하나. 무엇을 더하거나 지우거나 바꿨나와 이유. 초안이 없음이고 검증도 맞음이면 <li class="none">이번 기간에 구조 변경 없음</li>. -->
+    <li>{{RPT_STRUCT_TEXT}}<span class="detail">이유: {{RPT_STRUCT_REASON}}</span><span class="ev">{{RPT_EV}}</span></li>
+  </ul>
+</section>
+
+<section class="ask" id="ask">
+  <h2>사용자에게 올릴 것</h2>
+  <ul class="items">
+    <!-- 반복: 초안 "사용자에게 올릴 것"의 줄마다 하나. RPT_ASK_KIND 는 보안 규칙, 규칙 바꾸기 절, 되돌릴 수 없는 일 중 하나. 초안이 없음이고 검증도 맞음이면 <li class="none">없음</li> 하나만 둔다. -->
     <li>
       <span class="kind">{{RPT_ASK_KIND}}</span>{{RPT_ASK_TEXT}}
       <span class="detail">이유: {{RPT_ASK_REASON}}</span>
@@ -140,7 +179,7 @@
 <section class="see" id="see">
   <h2>사용자가 볼 것</h2>
   <ul class="items">
-    <!-- 반복: 초안 "사용자가 볼 것"의 줄마다 하나. RPT_SEE_KIND 는 지움, 뒤집음, 사용자가 정한 문장을 바꿈, 또 어김, 기록 없이 바뀜 중 하나. 덧붙일 말이 없으면 detail 줄을 지운다. -->
+    <!-- 반복: 초안 "사용자가 볼 것"의 줄마다 하나. RPT_SEE_KIND 는 지움, 뒤집음, 사용자가 정한 문장을 바꿈, 또 어김, 기록 없이 바뀜, 판정 조건에 걸림, 해석이 갈림, 지식 베이스에 없음 중 하나. 덧붙일 말이 없으면 detail 줄을 지운다. -->
     <li>
       <span class="kind">{{RPT_SEE_KIND}}</span>{{RPT_SEE_TEXT}}
       <span class="detail">{{RPT_SEE_DETAIL}}</span>
@@ -177,7 +216,7 @@
 <section id="hypo">
   <h2>원인 추정이 맞았나</h2>
   <ul class="items">
-    <!-- 반복: 초안 "추정 점검"의 줄마다 하나. 줄 맨 앞의 말(아직 지켜봄, 맞는 것으로 봄, 틀려서 다시 봄, 되돌림, 신호에 맞는 사례가 있음)을 kind에 넣는다. 초안이 없음이고 검증도 맞음이면 <li class="none">세운 추정 없음</li>. -->
+    <!-- 반복: 초안 "추정 점검"의 줄마다 하나. 줄 맨 앞의 말(아직 지켜봄, 맞는 것으로 봄, 틀려서 다시 봄, 판정 조건에 걸림)을 kind에 넣는다. 초안이 없음이고 검증도 맞음이면 <li class="none">세운 추정 없음</li>. -->
     <li><span class="kind">{{RPT_HYPO_KIND}}</span>{{RPT_HYPO_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
   </ul>
 </section>
@@ -199,14 +238,6 @@
       <li><time>{{RPT_HIST_DATE}}</time>{{RPT_HIST_WHAT}} <span class="meta">{{RPT_HIST_WHO}}</span><span class="ev">{{RPT_EV}}</span></li>
     </ol>
   </div>
-</section>
-
-<section id="structure">
-  <h2>구조 점검 결과</h2>
-  <ul class="items">
-    <!-- 반복: 초안 "구조 점검"의 줄마다 하나. 무엇을 어디로 왜 옮겼나. 초안이 없음이고 검증도 맞음이면 <li class="none">이번 기간에 구조 변경 없음</li>. -->
-    <li>{{RPT_STRUCT_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
-  </ul>
 </section>
 
 <section id="held">
