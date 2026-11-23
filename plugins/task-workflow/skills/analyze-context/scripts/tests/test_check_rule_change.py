@@ -1,0 +1,404 @@
+"""check_rule_change.py 시험. 규칙 저장소, 지식 베이스, 한도 파일은 전부 임시 폴더에 지어낸 것이다.
+돌리기: python3 -m unittest discover -s <이 폴더>
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SCRIPT = os.path.join(os.path.dirname(HERE), "check_rule_change.py")
+EVOLVE = "누가 정했는지: 자가 발전"
+USER = "누가 정했는지: 사용자"
+
+GUIDE = (
+    "# 전역 지침\n\n"
+    "## 원칙\n- 정확성이 먼저다.\n- 묻는 건 두 경우뿐이다(예: 삭제, 배포).\n\n"
+    "## 보고\n- 두 줄로 보고한다.\n- 부작용을 적는다(예: 권한 규칙이 안 읽힌다).\n"
+)
+STYLE = "# 응답 양식\n\n## 설명 순서\n- 결론부터 쓴다.\n\n## 단어 고르기\n- 쉬운 말로 쓴다.\n"
+
+
+class Base(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="rule-change-test-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.repo = os.path.join(self.tmp, "rules")
+        self.kb = os.path.join(self.tmp, "kb")
+        self.limits = os.path.join(self.tmp, "evolve", "limits.json")
+        os.makedirs(os.path.join(self.kb, "raw", "decisions"))
+        with open(os.path.join(self.kb, "raw", "decisions", "D-20260105-01-add-hook.md"), "w", encoding="utf-8") as handle:
+            handle.write("---\nid: D-20260105-01\ntype: decision\nstatus: active\ntags: [structure]\n---\n# 훅을 더한다\n")
+        os.makedirs(self.repo)
+        self.git("init", "-q")
+        self.write("CLAUDE.md", GUIDE)
+        self.write("output-styles/style.md", STYLE)
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 하나씩 한다.\n")
+        self.write("evolve/state.md", "# 상태\n")
+        self.commit("처음", date="2026-01-01T09:00:00")
+        code, out, err = self.script("init-limits", "--repo", self.repo, "--limits", self.limits)
+        self.assertEqual(code, 0, err)
+
+    def env(self, extra=None):
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+        for name in ("KNOWLEDGE_BASE_DIR", "RULE_CHANGE_WHO", "RULE_CHANGE_DECISION", "RULE_CHANGE_LIMITS",
+                     "CLAUDE_CONFIG_DIR", "GIT_DIR", "GIT_INDEX_FILE"):
+            env.pop(name, None)
+        env.update(extra or {})
+        return env
+
+    def git(self, *args, date=None, extra=None, check=True):
+        env = self.env(extra)
+        if date:
+            env.update(GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date)
+        done = subprocess.run(["git", "-C", self.repo] + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if check and done.returncode != 0:
+            raise AssertionError(done.stderr.decode("utf-8"))
+        return done.returncode, done.stdout.decode("utf-8"), done.stderr.decode("utf-8")
+
+    def write(self, rel, text, stage=True):
+        path = os.path.join(self.repo, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        if stage:
+            self.git("add", rel)
+
+    def commit(self, message, date="2026-01-02T09:00:00"):
+        self.git("commit", "-q", "-m", message, date=date)
+
+    def script(self, *args, extra=None):
+        done = subprocess.run([sys.executable, SCRIPT] + list(args), env=self.env(extra),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return done.returncode, done.stdout.decode("utf-8"), done.stderr.decode("utf-8")
+
+    def check(self, *args, extra=None):
+        code, out, err = self.script("--repo", self.repo, "--limits", self.limits, "--knowledge-base", self.kb,
+                                     *args, extra=extra)
+        blocks = [line.strip()[len("[막음] "):] for line in out.splitlines() if line.strip().startswith("[막음]")]
+        notices = [line.strip()[len("[알림] "):] for line in out.splitlines() if line.strip().startswith("[알림]")]
+        return code, blocks, notices, out + err
+
+
+class LimitsFileTest(Base):
+
+    def test_first_values_are_the_sizes_at_that_time(self):
+        with open(self.limits, encoding="utf-8") as handle:
+            data = json.load(handle)
+        self.assertEqual(data["chars"], {"CLAUDE.md": len(GUIDE), "output-styles/style.md": len(STYLE)})
+        self.assertEqual(data["root"], self.repo)
+        self.assertEqual((data["examples_per_section"], data["edits_per_section"]), (1, 2))
+
+    def test_existing_limits_file_is_kept_unless_forced(self):
+        with open(self.limits, encoding="utf-8") as handle:
+            before = handle.read()
+        code, out, err = self.script("init-limits", "--repo", self.repo, "--limits", self.limits, "--examples", "9")
+        self.assertEqual(code, 2)
+        with open(self.limits, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), before)
+        code, out, err = self.script("init-limits", "--repo", self.repo, "--limits", self.limits, "--force",
+                                     "--files", "CLAUDE.md", "--examples", "4", "--edits", "3")
+        self.assertEqual(code, 0, err)
+        with open(self.limits, encoding="utf-8") as handle:
+            data = json.load(handle)
+        self.assertEqual((list(data["chars"]), data["examples_per_section"], data["edits_per_section"]), (["CLAUDE.md"], 4, 3))
+
+    def test_missing_file_is_an_error(self):
+        self.assertEqual(self.script("init-limits", "--repo", self.repo, "--limits", self.limits + "2", "--files", "없는.md")[0], 2)
+
+
+class CharsTest(Base):
+
+    def test_nothing_staged_passes(self):
+        code, blocks, notices, out = self.check()
+        self.assertEqual((code, blocks, notices), (0, [], []))
+        self.assertIn("통과", out)
+
+    def test_growing_past_the_limit_is_blocked(self):
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        code, blocks, notices, out = self.check()
+        self.assertEqual(code, 1)
+        self.assertEqual(len(blocks), 1)
+        self.assertIn("글자 수: CLAUDE.md %d자, 한도 %d자" % (len(GUIDE) + 9, len(GUIDE)), blocks[0])
+        self.assertIn("막음 1건", out)
+
+    def test_same_size_or_smaller_passes(self):
+        self.write("CLAUDE.md", GUIDE.replace("정확성이 먼저다", "정확성이 우선이다"[:8]))
+        self.assertEqual(self.check()[0], 0)
+        self.write("output-styles/style.md", STYLE.replace("- 쉬운 말로 쓴다.\n", ""))
+        self.assertEqual(self.check()[:2], (0, []))
+
+    def test_user_decided_change_is_only_a_notice(self):
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        code, blocks, notices, _ = self.check("--who", "user")
+        self.assertEqual((code, blocks), (0, []))
+        self.assertTrue(any(line.startswith("글자 수: CLAUDE.md") for line in notices))
+        self.assertEqual(self.check(extra={"RULE_CHANGE_WHO": "user"})[0], 0)
+        self.assertEqual(self.check(extra={"RULE_CHANGE_WHO": "evolve"})[0], 1)
+
+    def test_file_already_over_limit_may_shrink_but_not_grow(self):
+        self.write("CLAUDE.md", GUIDE + "- 사용자가 더한 긴 줄 하나.\n- 또 한 줄.\n")
+        self.commit("전역 지침에 두 줄\n\n" + USER)
+        self.write("CLAUDE.md", GUIDE + "- 사용자가 더한 긴 줄 하나.\n")
+        code, blocks, notices, _ = self.check()
+        self.assertEqual((code, blocks), (0, []))
+        self.assertTrue(any("늘지 않았다" in line for line in notices))
+        self.write("CLAUDE.md", GUIDE + "- 사용자가 더한 긴 줄 하나.\n- 또 한 줄.\n- 셋째 줄.\n")
+        self.assertEqual(self.check()[0], 1)
+
+    def test_limits_apply_only_to_the_repository_they_were_made_for(self):
+        other = os.path.join(self.tmp, "other")
+        shutil.copytree(self.repo, other)
+        with open(os.path.join(other, "CLAUDE.md"), "a", encoding="utf-8") as handle:
+            handle.write("- 긴 줄.\n" * 50)
+        subprocess.run(["git", "-C", other, "add", "CLAUDE.md"], check=True, env=self.env())
+        code, out, err = self.script("--repo", other, "--limits", self.limits)
+        self.assertEqual(code, 0, out + err)
+
+    def test_without_limits_file_chars_are_skipped_with_a_notice(self):
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        code, out, err = self.script("--repo", self.repo, "--limits", os.path.join(self.tmp, "없음.json"))
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("한도 파일이 없어", out)
+
+
+class ExamplesTest(Base):
+
+    def test_more_examples_than_the_limit_in_one_section_is_blocked(self):
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 하나씩 한다(예: 가). 예: 나.\n")
+        code, blocks, _, _ = self.check()
+        self.assertEqual(code, 1)
+        self.assertEqual(blocks, ['"예:" 개수: skills/helper/SKILL.md "순서" 절 2개, 한도 1개(커밋 전 0개)'])
+        self.assertEqual(self.check("--who", "user")[:2], (0, []))
+
+    def test_examples_spread_over_sections_pass(self):
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 하나씩 한다(예: 가).\n\n## 보고\n- 짧게(예: 나).\n")
+        self.assertEqual(self.check()[:2], (0, []))
+
+    def test_section_already_over_the_limit_is_blocked_only_when_it_grows(self):
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 예: 가. 예: 나. 예: 다.\n")
+        self.commit("예를 셋 넣음\n\n" + USER)
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 예: 가. 예: 나. 예: 다.\n- 예가 아닌 줄.\n")
+        self.assertEqual(self.check()[:2], (0, []))
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 예: 가. 예: 나. 예: 다. 예: 라.\n")
+        self.assertEqual(self.check()[0], 1)
+
+    def test_files_that_are_not_rule_documents_are_not_counted(self):
+        self.write("evolve/state.md", "# 상태\n\n## 보류\n- 예: 가. 예: 나. 예: 다. 예: 라.\n")
+        self.write("skills/helper/assets/template.md", "## 틀\n- 예: 가. 예: 나. 예: 다.\n")
+        self.assertEqual(self.check()[:2], (0, []))
+
+
+class RepeatTest(Base):
+
+    def edit(self, text, message, date):
+        self.write("output-styles/style.md", text)
+        self.commit(message, date=date)
+
+    def twice(self):
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론부터 쓴다. 왜를 붙인다."), "설명 순서 1\n\n" + EVOLVE, "2026-01-03T09:00:00")
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 2\n\n누가 정했나: 자가 발전", "2026-01-04T09:00:00")
+
+    def test_third_sentence_edit_of_a_section_by_self_evolve_is_blocked(self):
+        self.twice()
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        code, blocks, _, _ = self.check()
+        self.assertEqual(code, 1)
+        self.assertEqual(len(blocks), 1)
+        self.assertIn('같은 절 되풀이: output-styles/style.md "설명 순서" 절을 자가 발전이 이미 2번 고쳤다', blocks[0])
+        self.assertIn("구조 조치", blocks[0])
+
+    def test_second_edit_and_other_sections_pass(self):
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 1\n\n" + EVOLVE, "2026-01-03T09:00:00")
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check()[:2], (0, []))
+        self.commit("설명 순서 2\n\n" + EVOLVE, date="2026-01-04T09:00:00")
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다.").replace("쉬운 말로", "아는 말로"))
+        self.assertEqual(self.check()[:2], (0, []))
+
+    def test_only_removing_lines_is_not_blocked(self):
+        self.twice()
+        self.write("output-styles/style.md", STYLE.replace("- 결론부터 쓴다.\n", ""))
+        self.assertEqual(self.check()[:2], (0, []))
+
+    def test_edits_decided_by_user_are_not_counted(self):
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론을 먼저 쓴다."), "설명 순서 1\n\n" + EVOLVE, "2026-01-03T09:00:00")
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론만 쓴다."), "설명 순서 2\n\n누가 정했나: 사용자가 정함", "2026-01-04T09:00:00")
+        self.edit(STYLE.replace("결론부터 쓴다.", "결론을 쓴다."), "설명 순서 3 (표시 없음)", "2026-01-05T09:00:00")
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check()[:2], (0, []))
+
+    def test_user_decided_third_edit_is_only_a_notice(self):
+        self.twice()
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        code, blocks, notices, _ = self.check("--who", "user")
+        self.assertEqual((code, blocks), (0, []))
+        self.assertTrue(any(line.startswith("같은 절 되풀이") for line in notices))
+
+    def test_edits_since_limits_what_is_counted(self):
+        self.twice()
+        with open(self.limits, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["edits_since"] = "2026-01-04"
+        with open(self.limits, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check()[:2], (0, []))
+
+
+class StructureTest(Base):
+
+    def test_structure_file_needs_a_decision_record(self):
+        self.write("hooks/guard.py", "print('x')\n")
+        code, blocks, _, _ = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("구조 결정 기록: 구조 파일(hooks/guard.py)을 건드렸는데 결정 기록 id가 없다", blocks)
+        code, blocks, _, _ = self.check("--decision", "D-20260105-09")
+        self.assertEqual(code, 1)
+        self.assertIn("D-20260105-09이 지식 베이스 raw/decisions/ 에 없다", blocks[0])
+        self.assertEqual(self.check("--decision", "D-20260105-01")[:2], (0, []))
+        self.assertEqual(self.check(extra={"RULE_CHANGE_DECISION": "D-20260105-01"})[:2], (0, []))
+
+    def test_user_decided_structure_change_still_needs_a_record(self):
+        self.write("hooks/guard.py", "print('x')\n")
+        self.assertEqual(self.check("--who", "user")[0], 1)
+        self.assertEqual(self.check("--who", "user", "--decision", "D-20260105-01")[0], 0)
+
+    def test_without_knowledge_base_a_record_cannot_be_confirmed(self):
+        self.write("hooks/guard.py", "print('x')\n")
+        code, out, err = self.script("--repo", self.repo, "--limits", self.limits, "--decision", "D-20260105-01")
+        self.assertEqual(code, 1, out + err)
+        self.assertIn("지식 베이스를 몰라", out)
+        code, out, err = self.script("--repo", self.repo, "--limits", self.limits, "--decision", "D-20260105-01",
+                                     extra={"KNOWLEDGE_BASE_DIR": self.kb})
+        self.assertEqual(code, 0, out + err)
+
+    def test_what_counts_as_structure(self):
+        for rel in ("skills/helper/scripts/run.py", "bin/tool", "scheduled-tasks/daily/SKILL.md",
+                    "skills/new-one/SKILL.md", "agents/checker.md", "plugins/p/hooks/hooks.json"):
+            self.write(rel, "x\n")
+            self.assertEqual(self.check()[0], 1, rel)
+            self.git("reset", "-q", "--", rel)
+        self.git("rm", "-q", "--cached", "skills/helper/SKILL.md")
+        self.assertEqual(self.check()[0], 1)
+        self.git("reset", "-q", "--", "skills/helper/SKILL.md")
+        # 있는 스킬 문서의 문장을 고치는 것, 상태 파일, 그 밖의 파일은 구조가 아니다
+        self.write("skills/helper/SKILL.md", "# 도우미\n\n## 순서\n- 둘씩 한다.\n")
+        self.write("evolve/state.md", "# 상태\n- 고침\n")
+        self.write("settings.json", "{}\n")
+        self.write("skills/helper/references/more.md", "## 더\n- 글.\n")
+        self.assertEqual(self.check()[:2], (0, []))
+
+
+class HookTest(Base):
+
+    def install(self, *extra):
+        return self.script("install-hook", "--repo", self.repo, "--limits", self.limits, "--knowledge-base", self.kb, *extra)
+
+    def test_installed_hook_blocks_and_passes_real_commits(self):
+        code, out, err = self.install()
+        self.assertEqual(code, 0, err)
+        hook = os.path.join(self.repo, ".git", "hooks", "pre-commit")
+        self.assertTrue(os.access(hook, os.X_OK))
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        code, out, err = self.git("commit", "-q", "-m", "늘림", check=False)
+        self.assertNotEqual(code, 0)
+        self.assertIn("[막음] 글자 수: CLAUDE.md", out + err)
+        self.assertEqual(self.git("log", "--format=%s", "-1")[1].strip(), "처음")
+        code, out, err = self.git("commit", "-q", "-m", "늘림\n\n" + USER, check=False, extra={"RULE_CHANGE_WHO": "user"})
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.git("log", "--format=%s", "-1")[1].strip(), "늘림")
+
+    def test_hook_checks_only_what_this_commit_takes(self):
+        self.install()
+        self.write("CLAUDE.md", GUIDE + "- 다른 작업자가 스테이징해 둔 줄.\n")
+        self.write("notes.txt", "메모\n")
+        code, out, err = self.git("commit", "-q", "-m", "메모만", "--", "notes.txt", check=False)
+        self.assertEqual(code, 0, out + err)
+        self.assertNotEqual(self.git("commit", "-q", "-m", "전역 지침", "--", "CLAUDE.md", check=False)[0], 0)
+
+    def test_hook_needs_decision_for_structure_change(self):
+        self.install()
+        self.write("hooks/guard.py", "print('x')\n")
+        self.assertNotEqual(self.git("commit", "-q", "-m", "훅", check=False)[0], 0)
+        code, out, err = self.git("commit", "-q", "-m", "훅 D-20260105-01", check=False,
+                                  extra={"RULE_CHANGE_DECISION": "D-20260105-01"})
+        self.assertEqual(code, 0, out + err)
+
+    def test_other_hook_is_not_overwritten_unless_forced(self):
+        hook = os.path.join(self.repo, ".git", "hooks", "pre-commit")
+        os.makedirs(os.path.dirname(hook), exist_ok=True)
+        with open(hook, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nexit 0\n")
+        self.assertEqual(self.install()[0], 2)
+        with open(hook, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "#!/bin/sh\nexit 0\n")
+        self.assertEqual(self.install("--force")[0], 0)
+        self.assertTrue(os.path.isfile(hook + ".before-rule-check"))
+        self.assertEqual(self.install()[0], 0)   # 자기가 건 훅은 다시 걸 수 있다
+
+    def test_hook_lets_commits_through_when_script_is_gone(self):
+        copy = os.path.join(self.tmp, "copy.py")
+        shutil.copy(SCRIPT, copy)
+        self.assertEqual(self.install("--script", copy)[0], 0)
+        os.remove(copy)
+        self.write("CLAUDE.md", GUIDE + "- 한 줄 더.\n")
+        code, out, err = self.git("commit", "-q", "-m", "늘림", check=False)
+        self.assertEqual(code, 0)
+        self.assertIn("검사하지 못했다", err)
+
+
+class AuditTest(Base):
+
+    def test_audit_reports_commits_that_should_have_been_blocked(self):
+        self.git("tag", "review-1")
+        self.write("CLAUDE.md", GUIDE + "- 자가 발전이 더한 줄.\n")
+        self.commit("전역 지침 보고: 줄을 더한다\n\n" + EVOLVE, date="2026-01-03T09:00:00")
+        self.write("CLAUDE.md", GUIDE + "- 자가 발전이 더한 줄.\n- 사용자가 더한 줄.\n")
+        self.commit("전역 지침 보고: 사용자가 줄을 더한다\n\n" + USER, date="2026-01-04T09:00:00")
+        self.write("hooks/guard.py", "print('x')\n")
+        self.commit("훅을 더한다\n\n근거: D-20260105-01\n" + EVOLVE, date="2026-01-05T09:00:00")
+        self.write("hooks/other.py", "print('y')\n")
+        self.commit("훅을 하나 더 더한다", date="2026-01-06T09:00:00")
+        self.write("evolve/state.md", "# 상태\n- 고침\n")
+        self.commit("자가 발전 상태", date="2026-01-07T09:00:00")
+        code, out, err = self.script("--audit", "--since", "review-1", "--repo", self.repo, "--limits", self.limits,
+                                     "--knowledge-base", self.kb)
+        self.assertEqual(code, 1, err)
+        lines = out.splitlines()
+        self.assertIn("review-1..HEAD 커밋 5개", lines[0])
+        heads = [line for line in lines if " | " in line]
+        self.assertEqual([line.split(" | ")[1] for line in heads],
+                         ["전역 지침 보고: 줄을 더한다", "전역 지침 보고: 사용자가 줄을 더한다", "훅을 하나 더 더한다"])
+        self.assertIn("2026-01-03 자가 발전", heads[0])
+        self.assertIn("2026-01-04 사용자", heads[1])
+        self.assertIn("표시 없음", heads[2])
+        self.assertEqual(len([line for line in lines if "[어김] 글자 수" in line]), 1)
+        self.assertEqual(len([line for line in lines if "[알림] 글자 수" in line]), 1)
+        self.assertEqual(len([line for line in lines if "[어김] 구조 결정 기록" in line]), 1)
+        self.assertNotIn("자가 발전 상태", out)
+        self.assertEqual(lines[-1], "요약: 규칙 문서나 구조 파일을 건드린 커밋 4개, 어긴 커밋 2개(어김 2건), 알림 2건, 누가 정했는지 없는 커밋 1개")
+
+    def test_audit_with_nothing_wrong(self):
+        self.git("tag", "review-1")
+        self.write("output-styles/style.md", STYLE.replace("- 쉬운 말로 쓴다.\n", ""))
+        self.commit("응답 양식: 줄을 뺀다\n\n" + EVOLVE)
+        code, out, err = self.script("--audit", "--since", "review-1", "--repo", self.repo, "--limits", self.limits)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("어긴 커밋 0개", out)
+
+    def test_audit_usage(self):
+        self.assertEqual(self.script("--audit", "--repo", self.repo)[0], 2)
+        self.assertEqual(self.script("--audit", "--since", "없는-태그", "--repo", self.repo)[0], 2)
+        self.assertEqual(self.script("--repo", self.tmp)[0], 2)
+        self.assertEqual(self.script("--repo", self.repo, "--who", "someone")[0], 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
