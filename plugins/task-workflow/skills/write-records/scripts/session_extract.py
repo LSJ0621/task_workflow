@@ -86,6 +86,7 @@ LINE_TYPES_SKIP = {
     "cost-state",                # 비용 집계
     "summary",                   # 예전 형식의 세션 요약 줄. 대화가 아니다
     "data-flow-records",         # 도구 목록과 도구 호출이 어디서 왔는지 적는 장부. 글이 없다. 도구 호출은 assistant 줄에서 싣는다
+    "derived-from",              # 이 세션이 어떻게 시작됐는지 적는 장부(시작 시각, 종류, 경로). 글이 없다
 }
 
 # system 줄의 subtype. 전부 싣지 않는다
