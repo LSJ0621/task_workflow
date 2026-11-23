@@ -78,9 +78,10 @@ class Base(unittest.TestCase):
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return done.returncode, done.stdout.decode("utf-8"), done.stderr.decode("utf-8")
 
-    def check(self, *args, extra=None):
+    def check(self, *args, extra=None, today="2026-01-10"):
+        # 시험 커밋의 날짜가 2026년 1월 초라 검사하는 날도 그 무렵으로 준다(3번 검사의 창이 오늘에서 거꾸로 세기 때문이다)
         code, out, err = self.script("--repo", self.repo, "--limits", self.limits, "--knowledge-base", self.kb,
-                                     *args, extra=extra)
+                                     "--today", today, *args, extra=extra)
         blocks = [line.strip()[len("[막음] "):] for line in out.splitlines() if line.strip().startswith("[막음]")]
         notices = [line.strip()[len("[알림] "):] for line in out.splitlines() if line.strip().startswith("[알림]")]
         return code, blocks, notices, out + err
@@ -93,7 +94,7 @@ class LimitsFileTest(Base):
             data = json.load(handle)
         self.assertEqual(data["chars"], {"CLAUDE.md": len(GUIDE), "output-styles/style.md": len(STYLE)})
         self.assertEqual(data["root"], self.repo)
-        self.assertEqual((data["examples_per_section"], data["edits_per_section"]), (1, 2))
+        self.assertEqual((data["examples_per_section"], data["edits_per_section"], data["edits_window_days"]), (1, 2, 30))
 
     def test_existing_limits_file_is_kept_unless_forced(self):
         with open(self.limits, encoding="utf-8") as handle:
@@ -103,11 +104,14 @@ class LimitsFileTest(Base):
         with open(self.limits, encoding="utf-8") as handle:
             self.assertEqual(handle.read(), before)
         code, out, err = self.script("init-limits", "--repo", self.repo, "--limits", self.limits, "--force",
-                                     "--files", "CLAUDE.md", "--examples", "4", "--edits", "3")
+                                     "--files", "CLAUDE.md", "--examples", "4", "--edits", "3", "--window-days", "14")
         self.assertEqual(code, 0, err)
         with open(self.limits, encoding="utf-8") as handle:
             data = json.load(handle)
-        self.assertEqual((list(data["chars"]), data["examples_per_section"], data["edits_per_section"]), (["CLAUDE.md"], 4, 3))
+        self.assertEqual((list(data["chars"]), data["examples_per_section"], data["edits_per_section"], data["edits_window_days"]),
+                         (["CLAUDE.md"], 4, 3, 14))
+        self.assertEqual(self.script("init-limits", "--repo", self.repo, "--limits", self.limits, "--force",
+                                     "--window-days", "0")[0], 2)
 
     def test_missing_file_is_an_error(self):
         self.assertEqual(self.script("init-limits", "--repo", self.repo, "--limits", self.limits + "2", "--files", "없는.md")[0], 2)
@@ -211,7 +215,7 @@ class RepeatTest(Base):
         code, blocks, _, _ = self.check()
         self.assertEqual(code, 1)
         self.assertEqual(len(blocks), 1)
-        self.assertIn('같은 절 되풀이: output-styles/style.md "설명 순서" 절을 자가 발전이 이미 2번 고쳤다', blocks[0])
+        self.assertIn('같은 절 되풀이: output-styles/style.md "설명 순서" 절을 자가 발전이 2025-12-11부터 이미 2번 고쳤다', blocks[0])
         self.assertIn("구조 조치", blocks[0])
 
     def test_second_edit_and_other_sections_pass(self):
@@ -241,15 +245,43 @@ class RepeatTest(Base):
         self.assertEqual((code, blocks), (0, []))
         self.assertTrue(any(line.startswith("같은 절 되풀이") for line in notices))
 
-    def test_edits_since_limits_what_is_counted(self):
-        self.twice()
+    def set_limit(self, **values):
         with open(self.limits, encoding="utf-8") as handle:
             data = json.load(handle)
-        data["edits_since"] = "2026-01-04"
+        data.update(values)
         with open(self.limits, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
+
+    def test_only_edits_inside_the_window_are_counted(self):
+        self.twice()   # 자가 발전이 2026-01-03과 2026-01-04에 고쳤다
         self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check(today="2026-02-02")[0], 1)          # 30일 전은 01-03. 두 번 다 창 안이다
+        self.assertEqual(self.check(today="2026-02-03")[:2], (0, []))   # 30일 전은 01-04. 한 번만 창 안이다
+        self.assertEqual(self.check(today="2026-06-01")[:2], (0, []))   # 오래 지나면 다시 고칠 수 있다
+
+    def test_window_length_comes_from_the_limits_file(self):
+        self.twice()
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.assertEqual(self.check(today="2026-02-20")[:2], (0, []))
+        self.set_limit(edits_window_days=60)
+        code, blocks, _, _ = self.check(today="2026-02-20")
+        self.assertEqual(code, 1)
+        self.assertIn("2025-12-22부터 이미 2번", blocks[0])
+        self.set_limit(edits_window_days=0)
+        self.assertEqual(self.check()[0], 2)
+
+    def test_edits_since_is_used_when_it_is_later_than_the_window_start(self):
+        self.twice()
+        self.write("output-styles/style.md", STYLE.replace("결론부터 쓴다.", "답부터 쓴다."))
+        self.set_limit(edits_since="2026-01-04")            # 창의 시작(2025-12-11)보다 늦다. 01-04의 한 번만 센다
         self.assertEqual(self.check()[:2], (0, []))
+        self.set_limit(edits_since="2026-01-03")
+        self.assertEqual(self.check()[0], 1)
+        self.set_limit(edits_since="2025-01-01")            # 창의 시작보다 이르면 창의 시작부터 센다
+        self.assertEqual(self.check(today="2026-02-03")[:2], (0, []))
+        self.assertEqual(self.check(today="2026-02-02")[0], 1)
+        self.set_limit(edits_since="작년")
+        self.assertEqual(self.check()[0], 2)
 
 
 class StructureTest(Base):
@@ -384,6 +416,76 @@ class AuditTest(Base):
         self.assertEqual(len([line for line in lines if "[어김] 구조 결정 기록" in line]), 1)
         self.assertNotIn("자가 발전 상태", out)
         self.assertEqual(lines[-1], "요약: 규칙 문서나 구조 파일을 건드린 커밋 4개, 어긴 커밋 2개(어김 2건), 알림 2건, 누가 정했는지 없는 커밋 1개")
+
+    def audit(self, *extra):
+        return self.script("--audit", "--since", "review-1", "--repo", self.repo, "--limits", self.limits, *extra)
+
+    def test_audit_counts_repeats_in_the_window_before_each_commit(self):
+        self.git("tag", "review-1")
+        line = "결론부터 쓴다."
+        for number, day in enumerate(("2026-01-03", "2026-01-04", "2026-03-01", "2026-03-05", "2026-03-06"), 1):
+            self.write("output-styles/style.md", STYLE.replace(line, "%d번 고친 줄." % number))   # 글자 수는 그대로다
+            self.commit("설명 순서 %d\n\n%s" % (number, EVOLVE), date=day + "T09:00:00")
+        code, out, err = self.audit("--knowledge-base", self.kb)
+        self.assertEqual(code, 1, err)
+        heads = [row.split(" | ")[1] for row in out.splitlines() if " | " in row]
+        # 3번째(03-01)는 앞의 두 번이 30일 창 밖이라 어김이 아니다. 5번째(03-06)는 창 안에 3·4번째가 있다
+        self.assertEqual(heads, ["설명 순서 5"])
+        self.assertIn("2026-02-04부터 이미 2번", out)
+        self.assertIn("어긴 커밋 1개(어김 1건)", out)
+
+    def merged_branch(self, message):
+        """main 에 직접 한 구조 커밋 하나와, 구조 커밋 둘이 든 브랜치를 머지 커밋으로 합친 이력을 만든다."""
+        self.git("tag", "review-1")
+        self.git("checkout", "-q", "-b", "feat")
+        self.write("hooks/a.py", "print('a')\n")
+        self.commit("브랜치: 훅을 더한다\n\n" + USER, date="2026-01-03T09:00:00")
+        self.write("skills/helper/scripts/run.py", "print('b')\n")
+        self.write("CLAUDE.md", GUIDE + "- 브랜치에서 자가 발전이 더한 줄.\n")
+        self.commit("브랜치: 스크립트를 더하고 전역 지침을 늘린다\n\n" + EVOLVE, date="2026-01-04T09:00:00")
+        self.git("checkout", "-q", "-")
+        self.write("hooks/direct.py", "print('c')\n")
+        self.commit("바로 한 훅 커밋\n\n" + USER, date="2026-01-05T09:00:00")
+        self.git("merge", "-q", "--no-ff", "-m", message, "feat", date="2026-01-06T09:00:00")
+
+    def flagged(self, out):
+        return [(row.split(" | ")[1], [line.strip() for line in out.splitlines()
+                                       if line.strip().startswith("[어김]")]) for row in out.splitlines() if " | " in row]
+
+    def test_decision_id_on_a_merge_commit_covers_the_commits_it_brought_in(self):
+        self.merged_branch("Merge pull request #1 from fake/feat\n\n구조 개편 (D-20260105-01)")
+        code, out, err = self.audit("--knowledge-base", self.kb)
+        self.assertEqual(code, 1, err)
+        lines = out.splitlines()
+        self.assertIn("review-1..HEAD 커밋 3개", lines[0])
+        self.assertTrue(lines[1].startswith("머지 "))
+        self.assertIn("결정 기록 D-20260105-01을 그 머지로 들어온 커밋 2개의 결정 기록으로 쳤다", lines[1])
+        kinds = [line for line in lines if "[어김]" in line]
+        # 머지로 들어온 커밋의 구조 결정 기록은 어김이 아니다. 글자 수 같은 다른 검사는 그대로 본다
+        self.assertEqual(len([line for line in kinds if "구조 결정 기록" in line]), 1)
+        self.assertEqual(len([line for line in kinds if "글자 수" in line]), 1)
+        heads = [row.split(" | ")[1] for row in lines if " | " in row]
+        self.assertEqual(heads, ["브랜치: 스크립트를 더하고 전역 지침을 늘린다", "바로 한 훅 커밋"])
+        self.assertIn("어긴 커밋 2개(어김 2건)", lines[-1])
+
+    def test_merge_commit_id_is_not_used_when_that_record_does_not_exist(self):
+        self.merged_branch("Merge pull request #1 from fake/feat\n\n구조 개편 (D-20260105-09)")
+        code, out, err = self.audit("--knowledge-base", self.kb)
+        self.assertEqual(code, 1, err)
+        self.assertNotIn("머지 ", out)
+        self.assertEqual(len([line for line in out.splitlines() if "[어김] 구조 결정 기록" in line]), 3)
+
+    def test_merge_commit_without_id_or_without_knowledge_base_covers_nothing(self):
+        self.merged_branch("Merge branch 'feat'")
+        out = self.audit("--knowledge-base", self.kb)[1]
+        self.assertEqual(len([line for line in out.splitlines() if "[어김] 구조 결정 기록" in line]), 3)
+
+    def test_merge_commit_id_needs_the_knowledge_base_to_be_confirmed(self):
+        self.merged_branch("Merge pull request #1 from fake/feat\n\n구조 개편 (D-20260105-01)")
+        code, out, err = self.audit()
+        self.assertEqual(code, 1, err)
+        self.assertNotIn("머지 ", out)
+        self.assertEqual(len([line for line in out.splitlines() if "[어김] 구조 결정 기록" in line]), 3)
 
     def test_audit_with_nothing_wrong(self):
         self.git("tag", "review-1")

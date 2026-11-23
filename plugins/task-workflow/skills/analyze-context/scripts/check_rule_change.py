@@ -4,7 +4,7 @@
 
 사용:
   check_rule_change.py [--repo <저장소>] [--who user|evolve] [--decision <id>]
-                       [--knowledge-base <폴더>] [--limits <한도 파일>]
+                       [--knowledge-base <폴더>] [--limits <한도 파일>] [--today YYYY-MM-DD]
       스테이징된 변경을 검사한다. 종료 코드 0 = 통과(알림만 있어도 0), 1 = 막음.
   check_rule_change.py --audit --since <태그나 커밋> [--repo <저장소>] [--knowledge-base <폴더>] [--limits <한도 파일>]
       <since> 뒤부터 HEAD까지의 커밋을 같은 기준으로 사후에 검사한다. 토요일 점검 보고가 쓴다.
@@ -12,7 +12,7 @@
   check_rule_change.py install-hook --repo <저장소> [--knowledge-base <폴더>] [--limits <한도 파일>] [--script <경로>] [--force]
       그 저장소의 git pre-commit 훅으로 이 검사를 건다.
   check_rule_change.py init-limits --repo <규칙 저장소> [--files <경로> ...] [--limits <한도 파일>]
-                       [--examples <개수>] [--edits <횟수>] [--force]
+                       [--examples <개수>] [--edits <횟수>] [--window-days <일>] [--force]
       한도 파일을 처음 만든다. 처음 값은 지금 크기다.
 사용법이 틀리면 종료 코드 2다.
 
@@ -21,14 +21,20 @@
    이미 한도를 넘어 있는 파일을 줄이는 커밋은 알림만 낸다.
 2. "예:" 개수: 규칙 문서의 절(`## ` 제목) 하나에 "예:"가 한도보다 많아지면 막는다.
    이미 한도를 넘어 있는 절은 더 늘어날 때만 막는다.
-3. 같은 절 되풀이: 자가 발전이 그 절을 이미 한도(기본 2번)만큼 고쳤으면 다음 문장 수정을 막는다.
+3. 같은 절 되풀이: 자가 발전이 최근 창(기본 30일) 안에 그 절을 이미 한도(기본 2번)만큼 고쳤으면 다음 문장 수정을 막는다.
    그때는 구조 조치(훅, 스크립트, 스킬 나누기)를 하거나 상태 파일에 올린다. 줄을 지우기만 하는 변경은 세지도 막지도 않는다.
+   창은 검사하는 날(오늘, 또는 --today)에서 edits_window_days 일 전부터다. 전체 이력으로 세면 한두 번 고친 절이 영영 막혀서다.
+   edits_since 가 있으면 창의 시작과 그 날짜 가운데 더 늦은 날부터 센다. 날짜는 커밋의 작성 날짜다.
+   사후 검사는 커밋마다 그 커밋을 한 날을 기준으로 같은 창을 쓴다.
    자가 발전이 고친 커밋인지는 커밋 메시지의 "누가 정했는지: 자가 발전"(예전 문구 "누가 정했나:"도 본다)으로 안다.
 4. 구조 결정 기록: 구조 파일을 건드렸는데 결정 기록 id가 없거나 그 기록이 지식 베이스 raw/decisions/ 에 없으면 막는다.
 
 - 누가 정했는지는 --who 로 준다. 안 주면 환경 변수 RULE_CHANGE_WHO, 그것도 없으면 evolve(자가 발전)다.
   사용자가 정한 변경(--who user)은 1~3을 알림으로만 낸다. 4는 누가 정했든 막는다.
 - 결정 기록 id는 --decision, 없으면 환경 변수 RULE_CHANGE_DECISION 이다. 사후 검사는 커밋 메시지에 적힌 D- id를 본다.
+  사후 검사는 머지 커밋 메시지에 적힌 D- id도 그 머지로 들어온 커밋들(머지의 둘째 부모 쪽에서만 닿는 커밋)의 id로 친다.
+  PR 하나에 결정 기록 하나를 남기고 머지 커밋(PR 제목)에 id를 적으면, 그 PR의 커밋마다 id를 적지 않아도 된다.
+  그 기록이 지식 베이스에 없으면 치지 않는다.
 - 지식 베이스는 --knowledge-base, 없으면 $KNOWLEDGE_BASE_DIR 이다.
 - 한도 파일은 --limits, 없으면 $RULE_CHANGE_LIMITS, 없으면 <Claude 설정 폴더>/evolve/limits.json 이다
   (Claude 설정 폴더는 $CLAUDE_CONFIG_DIR 또는 ~/.claude). 한도 파일이 없으면 1은 건너뛰고 2와 3은 기본 한도로 본다.
@@ -38,7 +44,8 @@
   chars                 {저장소 기준 경로: 글자 수 한도}
   examples_per_section  절 하나의 "예:" 한도
   edits_per_section     자가 발전이 한 절을 고칠 수 있는 횟수
-  edits_since           (선택) YYYY-MM-DD. 있으면 3은 이 날 뒤의 커밋만 센다
+  edits_window_days     3에서 세는 기간(일). 기본 30. 검사하는 날에서 이만큼 전부터의 수정만 센다
+  edits_since           (선택) YYYY-MM-DD. 있으면 3은 이 날과 창의 시작 가운데 더 늦은 날부터 센다
   created               만든 날
 
 무엇을 규칙 문서와 구조 파일로 보나
@@ -51,6 +58,8 @@ import argparse, collections, datetime, json, os, pathlib, re, stat, subprocess,
 
 DEFAULT_EXAMPLES = 3
 DEFAULT_EDITS = 2
+DEFAULT_WINDOW_DAYS = 30
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 WHO_ENV, DECISION_ENV, LIMITS_ENV, KB_ENV = "RULE_CHANGE_WHO", "RULE_CHANGE_DECISION", "RULE_CHANGE_LIMITS", "KNOWLEDGE_BASE_DIR"
 WHO_NAMES = {"evolve": "자가 발전", "user": "사용자"}
 WHO_RE = re.compile(r"누가 정했(?:는지|나)\s*:\s*(자가 발전|사용자)")
@@ -131,19 +140,26 @@ def default_limits_path():
 def load_limits(path):
     """(한도 dict, 한도 파일이 있었나)"""
     if not path.is_file():
-        return {"chars": {}, "examples_per_section": DEFAULT_EXAMPLES, "edits_per_section": DEFAULT_EDITS}, False
+        return {"chars": {}, "examples_per_section": DEFAULT_EXAMPLES, "edits_per_section": DEFAULT_EDITS,
+                "edits_window_days": DEFAULT_WINDOW_DAYS}, False
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         chars = {str(k): int(v) for k, v in (data.get("chars") or {}).items()}
-        return {
+        limits = {
             "root": data.get("root"),
             "chars": chars,
             "examples_per_section": int(data.get("examples_per_section", DEFAULT_EXAMPLES)),
             "edits_per_section": int(data.get("edits_per_section", DEFAULT_EDITS)),
+            "edits_window_days": int(data.get("edits_window_days", DEFAULT_WINDOW_DAYS)),
             "edits_since": data.get("edits_since"),
-        }, True
+        }
     except (ValueError, TypeError, AttributeError) as error:
         fail(f"한도 파일을 읽을 수 없음: {path} ({error})")
+    if limits["edits_window_days"] < 1:
+        fail(f"한도 파일의 edits_window_days 는 1 이상이어야 한다: {path}")
+    if limits["edits_since"] is not None and not DAY_RE.match(str(limits["edits_since"])):
+        fail(f"한도 파일의 edits_since 는 YYYY-MM-DD 다: {path}")
+    return limits, True
 
 def chars_apply(limits, repo):
     root = limits.get("root")
@@ -214,17 +230,21 @@ def is_structure(kind, old, new):
 # 검사
 # ---------------------------------------------------------------------------
 
-def self_evolve_edits(repo, path, section, before_rev, since):
-    """before_rev 까지의 이력에서 자가 발전이 path 의 그 절에 문장을 더하거나 바꾼 커밋들(짧은 해시)."""
-    args = ["log", "--no-merges", "--format=%H%x1f%B%x1e"]
-    if since:
-        args.append(f"--since={since}T00:00:00")
-    out = git(repo, *args, before_rev, "--", path)
+def window_start(limits, day):
+    """3번 검사가 세기 시작하는 날(YYYY-MM-DD). day(검사하는 날)에서 창만큼 전과 edits_since 가운데 더 늦은 날."""
+    start = (datetime.date.fromisoformat(day) - datetime.timedelta(days=limits["edits_window_days"])).isoformat()
+    return max(start, str(limits["edits_since"])) if limits.get("edits_since") else start
+
+def self_evolve_edits(repo, path, section, before_rev, start):
+    """before_rev 까지의 이력에서 start 날부터 자가 발전이 path 의 그 절에 문장을 더하거나 바꾼 커밋들(짧은 해시)."""
+    out = git(repo, "log", "--no-merges", "--format=%H%x1f%as%x1f%B%x1e", before_rev, "--", path)
     hits = []
     for chunk in (out or "").split("\x1e"):
         if "\x1f" not in chunk:
             continue
-        commit, message = chunk.strip("\n").split("\x1f", 1)
+        commit, day, message = chunk.strip("\n").split("\x1f", 2)
+        if day < start:
+            continue   # 창 밖의 수정은 세지 않는다
         m = WHO_RE.search(message)
         if not m or m.group(1) != "자가 발전":
             continue
@@ -236,8 +256,8 @@ def decision_exists(kb, rid):
     folder = kb / "raw" / "decisions"
     return any(p.name == f"{rid}.md" or p.name.startswith(rid + "-") for p in folder.glob(f"{rid}*.md"))
 
-def examine(repo, changes, limits, who, decisions, kb, history_rev):
-    """(막을 것, 알림) 두 목록. who 가 user 면 1~3은 알림이 된다."""
+def examine(repo, changes, limits, who, decisions, kb, history_rev, day):
+    """(막을 것, 알림, 구조 파일) 세 목록. who 가 user 면 1~3은 알림이 된다. day 는 검사하는 날(사후 검사는 그 커밋을 한 날)."""
     blocks, notices = [], []
     soft = notices if who == "user" else blocks
     structure = []
@@ -263,10 +283,11 @@ def examine(repo, changes, limits, who, decisions, kb, history_rev):
         # 3. 자가 발전이 같은 절을 되풀이해 고침
         if before is not None and history_rev:
             for name in edited_sections(before, after):
-                hits = self_evolve_edits(repo, old, name, history_rev, limits.get("edits_since"))
+                hits = self_evolve_edits(repo, old, name, history_rev, window_start(limits, day))
                 if len(hits) >= limits["edits_per_section"]:
                     soft.append(
-                        f"같은 절 되풀이: {new} \"{name}\" 절을 자가 발전이 이미 {len(hits)}번 고쳤다({', '.join(hits)}). "
+                        f"같은 절 되풀이: {new} \"{name}\" 절을 자가 발전이 {window_start(limits, day)}부터 "
+                        f"이미 {len(hits)}번 고쳤다({', '.join(hits)}). "
                         "문장을 더 고치지 말고 구조 조치(훅, 스크립트, 스킬 나누기)를 하거나 상태 파일에 올린다")
     # 4. 구조 파일에는 결정 기록
     if structure:
@@ -298,8 +319,11 @@ def cmd_check(a):
     given = a.decision or os.environ.get(DECISION_ENV) or ""
     decisions = DECISION_RE.findall(given)
     changes = staged_changes(repo)
+    today = a.today or datetime.date.today().isoformat()
+    if not DAY_RE.match(today):
+        fail(f"날짜는 YYYY-MM-DD로 적는다: {today}")
     blocks, notices, structure = examine(repo, changes, limits, who, decisions, knowledge_base(a.knowledge_base),
-                                         "HEAD" if head_exists(repo) else None)
+                                         "HEAD" if head_exists(repo) else None, today)
     if given and not decisions:
         notices.append(f"결정 기록 id 모양(D-YYYYMMDD-NN)이 아님: {given}")
     rule_docs = [c for c in changes if c[0] != "D" and is_rule_doc(c[2], limits, repo)]
@@ -312,6 +336,29 @@ def cmd_check(a):
     print("  통과" if not blocks else f"  막음 {len(blocks)}건")
     return 0 if not blocks else 1
 
+def merge_decisions(repo, since, kb):
+    """{커밋: 그 커밋을 들여온 머지 커밋에 적힌 결정 기록 id들}, [(머지 해시, id들, 들어온 커밋 수)].
+    머지 커밋 메시지에 지식 베이스에 있는 D- id가 있을 때만, 그 머지의 첫째 부모에서는 닿지 않고
+    둘째(와 그 뒤) 부모에서 닿는 커밋들에 그 id를 준다. 지식 베이스를 모르면 아무것도 주지 않는다."""
+    covered, applied = {}, []
+    if kb is None:
+        return covered, applied
+    out = git(repo, "log", "--merges", "--format=%H%x1f%P%x1f%B%x1e", f"{since}..HEAD") or ""
+    for chunk in out.split("\x1e"):
+        if "\x1f" not in chunk:
+            continue
+        merge, parents, message = chunk.strip("\n").split("\x1f", 2)
+        parents = parents.split()
+        ids = [rid for rid in dict.fromkeys(DECISION_RE.findall(message)) if decision_exists(kb, rid)]
+        if len(parents) < 2 or not ids:
+            continue
+        brought = (git(repo, "rev-list", "--no-merges", f"^{parents[0]}", *parents[1:]) or "").split()
+        for commit in brought:
+            covered.setdefault(commit, [])
+            covered[commit] += [rid for rid in ids if rid not in covered[commit]]
+        applied.append((merge[:7], ids, len(brought)))
+    return covered, applied
+
 def cmd_audit(a):
     if not a.since:
         fail("--audit 에는 --since <태그나 커밋> 이 있어야 한다")
@@ -323,6 +370,9 @@ def cmd_audit(a):
         fail(f"커밋 범위를 읽을 수 없음: {a.since}..HEAD")
     commits = [chunk.strip("\n").split("\x1f", 2) for chunk in out.split("\x1e") if "\x1f" in chunk]
     print(f"규칙 커밋 사후 검사: {repo} · {a.since}..HEAD 커밋 {len(commits)}개")
+    covered, applied = merge_decisions(repo, a.since, kb)
+    for merge, ids, count in reversed(applied):
+        print(f"머지 {merge}의 결정 기록 {', '.join(ids)}을 그 머지로 들어온 커밋 {count}개의 결정 기록으로 쳤다")
     broken = found = noted = unmarked = looked = 0
     for commit, day, message in commits:
         changes = commit_changes(repo, commit)
@@ -334,8 +384,9 @@ def cmd_audit(a):
         m = WHO_RE.search(message)
         who = "user" if m and m.group(1) == "사용자" else "evolve"
         has_parent = git(repo, "rev-parse", "--verify", "-q", f"{commit}^") is not None
-        blocks, notices, _ = examine(repo, changes, limits, who, DECISION_RE.findall(message), kb,
-                                     f"{commit}^" if has_parent else None)
+        decisions = DECISION_RE.findall(message) + covered.get(commit, [])
+        blocks, notices, _ = examine(repo, changes, limits, who, decisions, kb,
+                                     f"{commit}^" if has_parent else None, day)
         if not m:
             unmarked += 1
             notices.append("커밋 메시지에 누가 정했는지가 없다. 자가 발전의 변경으로 보고 검사했다")
@@ -419,13 +470,17 @@ def cmd_init_limits(a):
         "chars": chars,
         "examples_per_section": a.examples if a.examples is not None else max(most, 1),
         "edits_per_section": a.edits if a.edits is not None else DEFAULT_EDITS,
+        "edits_window_days": a.window_days if a.window_days is not None else DEFAULT_WINDOW_DAYS,
     }
+    if data["edits_window_days"] < 1:
+        fail("--window-days 는 1 이상")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"한도 파일을 만들었다: {path}")
     for name, size in chars.items():
         print(f"  글자 수 한도 {name}: {size}자")
-    print(f"  절 하나의 \"예:\" 한도: {data['examples_per_section']}개, 자가 발전이 한 절을 고칠 수 있는 횟수: {data['edits_per_section']}번")
+    print(f"  절 하나의 \"예:\" 한도: {data['examples_per_section']}개, "
+          f"자가 발전이 한 절을 고칠 수 있는 횟수: 최근 {data['edits_window_days']}일에 {data['edits_per_section']}번")
     return 0
 
 # ---------------------------------------------------------------------------
@@ -447,6 +502,7 @@ def main(argv=None):
         ap.add_argument("--limits")
         ap.add_argument("--examples", type=int)
         ap.add_argument("--edits", type=int)
+        ap.add_argument("--window-days", type=int)
         ap.add_argument("--force", action="store_true")
         return cmd_init_limits(ap.parse_args(argv[1:]))
     ap = argparse.ArgumentParser(prog="check_rule_change.py", description=__doc__,
@@ -456,6 +512,7 @@ def main(argv=None):
     ap.add_argument("--decision")
     ap.add_argument("--knowledge-base")
     ap.add_argument("--limits")
+    ap.add_argument("--today", help="검사하는 날 YYYY-MM-DD (기본 오늘). 3번 검사의 창을 여기서부터 거꾸로 센다")
     ap.add_argument("--audit", action="store_true")
     ap.add_argument("--since")
     a = ap.parse_args(argv)
