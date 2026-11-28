@@ -39,9 +39,14 @@
                   다시 물어본 말 수, 메모도 기록도 없는 지적 수, 목록이 있는 날 수. 목록이 하나도 없는 주는 앞의 둘을 비운다.
 - stale_board     상황판(wiki/board.md)에서 고친 날짜가 그 주의 센 마지막 날보다 14일 넘게 앞선 묶음 수.
                   이번 주는 지금 파일에서, 지난 주는 그 주 끝에 지식 베이스에 커밋되어 있던 상황판에서 센다.
-- skill_runs      {스킬 이름: Skill 도구로 부른 횟수}. 예약 작업 세션은 빼고 서브에이전트가 부른 것은 센다.
-                  이어 연 세션에 복사된 같은 호출은 한 번만 센다.
-- skills_unused   이 스크립트가 든 플러그인의 스킬 가운데 그 주에 한 번도 안 불린 것.
+- skill_runs      {스킬 이름: Skill 도구로 부른 횟수}. 사람과 대화한 세션(예약 작업이 아닌 세션)에서 센다.
+                  서브에이전트가 부른 것도 센다. 이어 연 세션에 복사된 같은 호출은 한 번만 센다.
+- skill_runs_scheduled
+                  {스킬 이름: 그 스킬을 쓴 예약 작업 세션 수}. 그 주에 시작한 예약 작업 세션마다, Skill 도구로 불렀거나
+                  이 플러그인 스킬의 지침 파일(skills/<스킬>/SKILL.md, skills/<스킬>/references/ 아래)을 Read 로 읽었으면
+                  한 번으로 센다. 예약 작업은 서브에이전트에 지침 파일의 경로를 넘겨 스킬을 돌려서 Skill 도구로는 안 잡힌다.
+                  다른 스킬이 참조로 읽은 것도 들어가므로 실제보다 많이 잡힐 수 있다.
+- skills_unused   이 스크립트가 든 플러그인의 스킬 가운데 그 주에 위 둘 어디에도 없는 것.
 
 경로는 인자나 환경 변수로 받는다. 스크립트에 개인 경로를 적지 않는다.
 - 세션 기록: --projects-dir, 없으면 <Claude 설정 폴더>/projects (Claude 설정 폴더는 $CLAUDE_CONFIG_DIR 또는 ~/.claude)
@@ -77,7 +82,7 @@ NOTES = [
     "- 메모 줄: `raw/journal/`의 그 주 날짜 파일에 적힌 메모 줄 수.",
     "- `-`는 읽을 수 없었던 값이다.",
 ]
-USAGE_HEADER = ["주", "다시 물음", "메모 없는 지적", "모은 날", "오래된 상황판 묶음", "스킬 실행"]
+USAGE_HEADER = ["주", "다시 물음", "메모 없는 지적", "모은 날", "오래된 상황판 묶음", "스킬 실행", "예약 작업이 쓴 스킬", "안 불림"]
 USAGE_INTRO = [
     "# 쓰임",
     "",
@@ -92,10 +97,13 @@ USAGE_NOTES = [
     "- 다시 물음, 메모 없는 지적: 새벽 작업이 모은 말(`evolve/signals/`)의 그 주 날짜 파일에서 센다. 메모 없는 지적은 종류가 지적이고 메모·기록이 없음인 줄이다.",
     "- 모은 날: 그 주에 모은 말 목록이 있는 날 수. 목록이 하나도 없는 주는 앞의 두 칸이 `-`다.",
     "- 오래된 상황판 묶음: 상황판(`wiki/board.md`)에서 고친 날짜가 그 주의 센 마지막 날보다 14일 넘게 앞선 묶음 수.",
-    "- 스킬 실행: Skill 도구로 부른 횟수. 예약 작업 세션은 뺀다. `안 불림:` 뒤는 이 플러그인의 스킬 가운데 그 주에 한 번도 안 불린 것이다.",
+    "- 스킬 실행: 사람과 대화한 세션에서 Skill 도구로 부른 횟수. 예약 작업 세션은 여기에 넣지 않는다.",
+    "- 예약 작업이 쓴 스킬: 스킬마다 그 스킬을 쓴 예약 작업 세션 수. Skill 도구로 불렀거나 이 플러그인 스킬의 지침 파일(`SKILL.md`, `references/`)을 읽은 세션이다. 다른 스킬이 참조로 읽은 것도 들어간다.",
+    "- 안 불림: 이 플러그인의 스킬 가운데 그 주에 위 두 칸 어디에도 없는 것.",
     "- `-`는 읽을 수 없었던 값이다.",
 ]
 STALE_DAYS = 14
+SKILL_FILE_RE = re.compile(r"/skills/([^/]+)/(?:SKILL\.md$|references/)")
 SIGNAL_ROW_RE = re.compile(r"^\| \d{2}:\d{2} \| ")
 BOARD_DAY_RE = re.compile(r"^- 고친 날짜:\s*(\d{4}-\d{2}-\d{2})")
 WHO_RE = re.compile(r"^[ \t]*누가 정했(?:는지|나)[ \t]*:[ \t]*(자가 발전|사용자)", re.M)   # 줄이 이 말로 시작할 때만
@@ -430,6 +438,10 @@ def scan_file(path, session, kb_paths, extractor, main):
                     params = block.get("input") if isinstance(block.get("input"), dict) else {}
                     if block.get("name") == "Skill" and isinstance(params.get("skill"), str) and params["skill"].strip():
                         session["skills"].append((block.get("id"), data.get("timestamp"), params["skill"].strip()))
+                    elif block.get("name") == "Read" and isinstance(params.get("file_path"), str):
+                        read = SKILL_FILE_RE.search(params["file_path"])
+                        if read:
+                            session["skill_files"].add(read.group(1))
                     session["reads"] |= kb_paths.reads_in_tool(block.get("name"), params, data.get("cwd") or session["cwd"])
             elif main and kind in ("user", "attachment"):
                 if kind == "user":
@@ -444,7 +456,7 @@ def scan_file(path, session, kb_paths, extractor, main):
                     session["messages"].append((data.get("uuid"), data.get("timestamp")))
 
 def scan_sessions(projects, earliest, kb_paths, extractor):
-    """{세션 id: {start, cwd, scheduled, tools, reads, messages, skills}}. earliest 보다 전에 마지막으로 고친 파일은 읽지 않는다."""
+    """{세션 id: {start, cwd, scheduled, tools, reads, messages, skills, skill_files}}. earliest 보다 전에 마지막으로 고친 파일은 읽지 않는다."""
     sessions = {}
     floor = datetime.datetime.combine(earliest, datetime.time()).timestamp()
     if not projects.is_dir():
@@ -462,7 +474,7 @@ def scan_sessions(projects, earliest, kb_paths, extractor):
             main = len(rel) == 1
             sid = rel[0][:-len(".jsonl")] if main else rel[0]
             session = sessions.setdefault(sid, {"start": None, "cwd": None, "scheduled": False, "tools": 0,
-                                                "reads": set(), "messages": [], "skills": []})
+                                                "reads": set(), "messages": [], "skills": [], "skill_files": set()})
             scan_file(path, session, kb_paths, extractor, main)
     return sessions
 
@@ -587,12 +599,12 @@ def table_row(row):
 
 def usage_row(row):
     last = datetime.date.fromisoformat(row["last_day"])
-    runs = sorted(row["skill_runs"].items(), key=lambda item: (-item[1], item[0]))
-    skills = ", ".join(f"{name} {count}" for name, count in runs) or "없음"
-    if row["skills_unused"]:
-        skills += " / 안 불림: " + ", ".join(row["skills_unused"])
+    def counts(runs):
+        ordered = sorted(runs.items(), key=lambda item: (-item[1], item[0]))
+        return (", ".join(f"{name} {count}" for name, count in ordered) or "없음").replace("|", "/")
     return [f"{row['week']} ~ {last.strftime('%m-%d')}", show(row["reasks"]), show(row["bare_corrections"]),
-            show(row["collected_days"]), show(row["stale_board"]), skills.replace("|", "/")]
+            show(row["collected_days"]), show(row["stale_board"]), counts(row["skill_runs"]),
+            counts(row["skill_runs_scheduled"]), (", ".join(row["skills_unused"]) or "없음").replace("|", "/")]
 
 def write_rows(path, intro, header, aligns, lines_by_week, notes):
     """주마다 한 줄인 표 파일을 고쳐 쓴다. 파일에 있던 다른 주의 줄은 그대로 둔다."""
@@ -614,7 +626,7 @@ def write_table(path, rows):
                [(row["week"], table_row(row)) for row in rows], NOTES)
 
 def write_usage(path, rows):
-    write_rows(path, USAGE_INTRO, USAGE_HEADER, "| :- |" + " -: |" * (len(USAGE_HEADER) - 2) + " :- |",
+    write_rows(path, USAGE_INTRO, USAGE_HEADER, "| :- |" + " -: |" * 4 + " :- |" * (len(USAGE_HEADER) - 5),
                [(row["week"], usage_row(row)) for row in rows], USAGE_NOTES)
 
 # ---------------------------------------------------------------------------
@@ -656,9 +668,16 @@ def main():
     messages, seen = collections.Counter(), set()
     work = {week: [] for week in weeks}
     skill_runs, seen_calls = {week: collections.Counter() for week in weeks}, set()
+    scheduled_runs, plugin_skills = {week: collections.Counter() for week in weeks}, own_skills()
     for sid in sorted(sessions):
         session = sessions[sid]
         if session["scheduled"]:
+            # 예약 작업은 지침 파일의 경로를 넘겨 스킬을 돌린다. 그 세션이 쓴 스킬마다 한 번으로 센다
+            start = local_day(session["start"])
+            if start and week_start(start) in scheduled_runs:
+                used = {name for _, _, name in session["skills"]}
+                used |= {name for name in plugin_skills if name.split(":", 1)[1] in session["skill_files"]}
+                scheduled_runs[week_start(start)].update(used)
             continue
         for uuid, stamp in session["messages"]:
             key = uuid or (sid, stamp)
@@ -683,7 +702,7 @@ def main():
 
     # 지식 베이스
     cases, memos = count_cases(kb, set(weeks)), count_memos(kb, set(weeks))
-    signals, plugin_skills = count_signals(kb, set(weeks)), own_skills()
+    signals = count_signals(kb, set(weeks))
 
     # 저장소
     limits = load_limits(a.limits)
@@ -728,7 +747,9 @@ def main():
             "collected_days": signals[week][2] if week in signals else 0,
             "stale_board": stale_groups(board, last_day) if board is not None else None,
             "skill_runs": dict(skill_runs[week]),
-            "skills_unused": [name for name in plugin_skills if name not in skill_runs[week]],
+            "skill_runs_scheduled": dict(scheduled_runs[week]),
+            "skills_unused": [name for name in plugin_skills
+                              if name not in skill_runs[week] and name not in scheduled_runs[week]],
         })
         rule_chars = plugin_chars = None
         if rules_repo and rules_branch:

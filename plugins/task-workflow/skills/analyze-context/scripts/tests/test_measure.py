@@ -361,7 +361,7 @@ class MeasureTest(unittest.TestCase):
                            self.skill_calls(103, "2026-01-13", [("call-4", "other:helper")])])
         self.session(sid, [self.skill_calls(104, "2026-01-08", [("call-5", "other:inner")])], sub="agent-y")   # 서브에이전트가 부른 것
         self.session("bbbbbbbb-0000-4000-8000-000000000002", [first])                                        # 이어 연 세션에 복사된 호출
-        self.session("bbbbbbbb-0000-4000-8000-000000000003", [                                               # 예약 작업 세션은 뺀다
+        self.session("bbbbbbbb-0000-4000-8000-000000000003", [                                               # 예약 작업 세션은 따로 센다
             {"type": "user", "uuid": uid(111), "timestamp": "2026-01-08T20:09:00.000Z", "turnOrigin": "scheduled",
              "promptSource": "system", "message": {"role": "user", "content": "<scheduled-task name=\"daily\">지시문</scheduled-task>"}},
             self.skill_calls(112, "2026-01-08", [("call-6", "other:helper")])])
@@ -393,12 +393,14 @@ class MeasureTest(unittest.TestCase):
             "reasks": 2, "bare_corrections": 2, "collected_days": 3,
             "stale_board": 2,
             "skill_runs": {"fake-plugin:analyze-context": 1, "other:helper": 2, "other:inner": 1},
+            "skill_runs_scheduled": {"other:helper": 1},     # 예약 작업 세션에서 부른 것은 대화 세션의 횟수에 넣지 않는다
         })
         self.assertEqual(this, {
             "week": "2026-01-12", "last_day": "2026-01-14",
             "reasks": None, "bare_corrections": None, "collected_days": 0,
             "stale_board": 1,
             "skill_runs": {"other:helper": 1},
+            "skill_runs_scheduled": {},
         })
         self.assertEqual(unused_last, unused_this)
 
@@ -421,7 +423,10 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(rows[0][1:], ["4", "예전 줄"])
         self.assertEqual(rows[1][1:5], ["2", "2", "3", "2"])
         self.assertTrue(rows[1][5].startswith("other:helper 2, fake-plugin:analyze-context 1, other:inner 1"), rows[1][5])
+        self.assertEqual(rows[1][6], "other:helper 1")                                  # 예약 작업이 쓴 스킬은 칸이 따로다
         self.assertEqual(rows[2][1:5], ["-", "-", "0", "1"])
+        self.assertEqual((rows[2][5], rows[2][6]), ("other:helper 1", "없음"))
+        self.assertIn("| 스킬 실행 | 예약 작업이 쓴 스킬 | 안 불림 |", text)
         self.assertIn("| 주 | 다시 물음 | 메모 없는 지적 | 모은 날 | 오래된 상황판 묶음 | 스킬 실행 |", text)
         self.assertIn("고침: " + os.path.join(self.kb, "evolve", "usage.md"), out)
         self.measure()                                                                   # 다시 돌려도 같은 파일이다
@@ -432,6 +437,7 @@ class MeasureTest(unittest.TestCase):
         last, this = self.usage("--no-write")
         for row in (last, this):
             self.assertEqual((row["reasks"], row["bare_corrections"], row["collected_days"], row["skill_runs"]), (None, None, 0, {}))
+            self.assertEqual(row["skill_runs_scheduled"], {})
         self.assertEqual((last["stale_board"], this["stale_board"]), (None, None))       # 상황판 파일도 지식 베이스 저장소도 없다
         self.assertFalse(os.path.exists(os.path.join(self.kb, "evolve", "usage.md")))
 
@@ -445,6 +451,38 @@ class MeasureTest(unittest.TestCase):
         last, this = json.loads(done.stdout.decode("utf-8"))["usage"]
         self.assertEqual(last["skills_unused"], [])                                      # 지난주에는 불렸다
         self.assertEqual(this["skills_unused"], ["fake-plugin:analyze-context"])
+
+    def test_usage_counts_skills_a_scheduled_session_ran_through_instruction_files(self):
+        config, script = self.installed_copy()
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(script))))
+
+        def read(number, day, path):
+            return {"type": "assistant", "uuid": uid(number), "timestamp": "%sT03:00:30.000Z" % day, "isSidechain": False,
+                    "message": {"role": "assistant", "model": "claude-fake-1",
+                                "content": [{"type": "tool_use", "id": "read-%d" % number, "name": "Read", "input": {"file_path": path}}]}}
+
+        def scheduled(number, day):
+            return {"type": "user", "uuid": uid(number), "timestamp": "%sT03:00:00.000Z" % day, "turnOrigin": "scheduled",
+                    "promptSource": "system", "message": {"role": "user", "content": "<scheduled-task name=\"daily\">지시문</scheduled-task>"}}
+        first, second, talk = ("cccccccc-0000-4000-8000-00000000000%d" % n for n in (1, 2, 3))
+        # 지난주 예약 작업 두 번: 서브에이전트가 지침 파일을 읽었다. 한 세션에서 여러 번 읽어도 한 번이다
+        self.session(first, [scheduled(201, "2026-01-06"), self.skill_calls(202, "2026-01-06", [("call-s1", "fake-plugin:daily")])])
+        self.session(first, [read(203, "2026-01-06", root + "/skills/analyze-context/SKILL.md"),
+                             read(204, "2026-01-06", root + "/skills/analyze-context/references/judging.md"),
+                             read(205, "2026-01-06", root + "/skills/no-such-skill/SKILL.md"),
+                             read(206, "2026-01-06", root + "/skills/analyze-context/scripts/measure.py")], sub="agent-s1")
+        self.session(second, [scheduled(211, "2026-01-07")])
+        self.session(second, [read(212, "2026-01-07", root + "/skills/analyze-context/references/judging.md")], sub="agent-s2")
+        # 이번 주: 대화 세션이 같은 파일을 읽은 것은 예약 작업의 쓰임이 아니다
+        self.session(talk, [read(221, "2026-01-13", root + "/skills/analyze-context/SKILL.md")])
+        done = subprocess.run([sys.executable, script, self.kb, "--today", TODAY, "--json", "--no-write",
+                               "--projects-dir", self.projects],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(os.environ, TZ="Asia/Seoul", CLAUDE_CONFIG_DIR=config))
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8"))
+        last, this = json.loads(done.stdout.decode("utf-8"))["usage"]
+        self.assertEqual(last["skill_runs_scheduled"], {"fake-plugin:analyze-context": 2, "fake-plugin:daily": 1})
+        self.assertEqual((last["skill_runs"], last["skills_unused"]), ({}, []))          # 예약 작업만 쓴 스킬은 안 불림이 아니다
+        self.assertEqual((this["skill_runs_scheduled"], this["skills_unused"]), ({}, ["fake-plugin:analyze-context"]))
 
     def test_errors(self):
         self.assertEqual(self.measure(kb=self.tmp)[0], 1)
