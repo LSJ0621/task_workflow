@@ -10,7 +10,7 @@
 | 원본 | `raw/` | 추가만 한다. 확정된 뒤에는 고치지 않는다 | 요약으로 부족할 때, 요약에 적힌 id를 따라 그 기록만 |
 | 요약 문서 | `wiki/` | 원본에서 만들어져서 언제든 다시 만들 수 있다. 맥락 요약(`wiki/context.md`), 프로젝트 카드. 지금 판단에 쓰는 `active` 기록만 올린다 | 작업 세션이 필요할 때 찾아 읽는다 |
 | 상황판 | `wiki/board.md` | 프로젝트마다 지금 어디까지 왔는지. 덮어쓴다. 지난 내용은 git 이력에 있다 | 작업을 이어 갈 때 |
-| 자가 발전 문서 | `evolve/` | 규칙별 사례표(`rule-cases.md`), 추정 기록(`hypotheses.md`, 끝난 것은 `hypotheses-archive.md`), 측정값(`metrics.md`). 자가 발전(`analyze-context` 스킬)이 쓰고 추정 기록과 측정값의 형식도 그 스킬에 있다. 사서는 쓰지 않는다 | 자가 발전과 점검 보고. 작업 세션은 읽지 않는다 |
+| 자가 발전 문서 | `evolve/` | 규칙별 사례표(`rule-cases.md`), 추정 기록(`hypotheses.md`, 끝난 것은 `hypotheses-archive.md`), 측정값(`metrics.md`). 자가 발전(`analyze-context` 스킬)이 쓰고 추정 기록과 측정값의 형식도 그 스킬에 있다. 모은 말(`signals/YYYY-MM-DD.md`)은 새벽의 모으기 단계가 쌓고 형식은 `daily-upkeep` 스킬의 `references/collect.md`에 있다. 사서는 쓰지 않는다 | 자가 발전과 점검 보고. 작업 세션은 읽지 않는다 |
 
 `raw/` 아래 폴더는 메모 `journal/`, 사례 `cases/`, 결정 `decisions/`, 맥락 `context/`, 세션 발췌 `sessions/`, 점검 보고서 `reviews/`, 예전 아침 보고서 `reports/`, 예전 기록 `archive/`다. `sessions/`는 세션 기록에서 뽑은 글 전체를 두는 곳이다. 세션마다 파일 하나이고 스크립트만 적는다. 에이전트의 말까지 봐야 할 때만 읽는다. 점검 보고서는 아래 "점검 보고서" 절을 따른다. `reports/`와 `archive/`에는 예전 구조에서 쓰던 기록(예: 아침 보고서, 검수 결과)이 있다. 새로 쓰지 않는다. `raw/` 아래라 점검 스크립트는 그 안의 지난 id를 계속 인식한다.
 
