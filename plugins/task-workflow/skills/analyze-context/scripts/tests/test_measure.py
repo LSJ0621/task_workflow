@@ -394,6 +394,7 @@ class MeasureTest(unittest.TestCase):
             "stale_board": 2,
             "skill_runs": {"fake-plugin:analyze-context": 1, "other:helper": 2, "other:inner": 1},
             "skill_runs_scheduled": {"other:helper": 1},     # 예약 작업 세션에서 부른 것은 대화 세션의 횟수에 넣지 않는다
+            "skill_desc_chars": 0, "skill_count": 1,          # 지어낸 스킬 문서에는 머리말이 없다
         })
         self.assertEqual(this, {
             "week": "2026-01-12", "last_day": "2026-01-14",
@@ -401,6 +402,7 @@ class MeasureTest(unittest.TestCase):
             "stale_board": 1,
             "skill_runs": {"other:helper": 1},
             "skill_runs_scheduled": {},
+            "skill_desc_chars": 0, "skill_count": 2,
         })
         self.assertEqual(unused_last, unused_this)
 
@@ -483,6 +485,50 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(last["skill_runs_scheduled"], {"fake-plugin:analyze-context": 2, "fake-plugin:daily": 1})
         self.assertEqual((last["skill_runs"], last["skills_unused"]), ({}, []))          # 예약 작업만 쓴 스킬은 안 불림이 아니다
         self.assertEqual((this["skill_runs_scheduled"], this["skills_unused"]), ({}, ["fake-plugin:analyze-context"]))
+
+    # -- 매번 읽히는 양: 스킬 설명 글자 ------------------------------------------
+
+    def test_usage_counts_skill_description_chars_at_week_end(self):
+        doc = "---\nname: %s\ndescription: %s\n---\n# 본문\n\ndescription: 본문에 적힌 이 말은 세지 않는다\n"
+        # 지난주 끝에는 스킬 a의 설명 40자. 이 커밋은 저장소에 이미 있던 스킬 b(머리말 없음) 위에 쌓여서 스킬은 둘이다
+        self.commit(self.plugin, "2026-01-10", "스킬 a에 머리말을 단다", {"plugins/fake/skills/a/SKILL.md": doc % ("a", "가" * 40)})
+        # 이번 주: 여러 줄로 적은 설명(10자 + 빈칸 + 5자)과 따옴표로 싼 설명(3자)이 더해진다
+        self.commit(self.plugin, "2026-01-13", "스킬 b, c를 더한다", {
+            "plugins/fake/skills/b/SKILL.md": doc % ("b", ">\n  " + "나" * 10 + "\n  " + "다" * 5 + "\nlicense: 지어낸 값"),
+            "plugins/fake/skills/c/SKILL.md": doc % ("c", '"' + "라" * 3 + '"'),
+            "plugins/fake/skills/a/references/SKILL.md": doc % ("참조", "마" * 500),   # 스킬 폴더 바로 아래의 SKILL.md 만 센다
+            "skills/outside/SKILL.md": doc % ("밖", "바" * 500),                        # 플러그인 폴더 밖은 세지 않는다
+        })
+        before = self.table_rows_of_metrics_after_measure()
+        last, this = self.usage()
+        self.assertEqual((last["skill_desc_chars"], last["skill_count"]), (40, 2))
+        self.assertEqual((this["skill_desc_chars"], this["skill_count"]), (40 + 16 + 3, 3))
+        with open(os.path.join(self.kb, "evolve", "usage.md"), encoding="utf-8") as handle:
+            text = handle.read()
+        rows = [[c.strip() for c in line.strip("|").split("|")] for line in text.splitlines() if line.startswith("| 2")]
+        self.assertEqual([row[8:] for row in rows], [["40", "2"], ["59", "3"]])
+        self.assertIn("| 안 불림 | 스킬 설명 글자 | 스킬 수 |", text)
+        self.assertIn("매번 읽히는 양은 이 칸과 `metrics.md`의 전역 지침·응답 양식 글자다.", text)
+        self.assertEqual(self.table_rows(), before)                       # 측정값 표의 줄과 칸은 그대로다
+        self.assertEqual([len(row) for row in before], [15, 15])
+
+    def table_rows_of_metrics_after_measure(self):
+        code, _, err = self.measure()
+        self.assertEqual(code, 0, err)
+        return self.table_rows()
+
+    def test_usage_takes_skill_descriptions_from_the_installed_copy_when_there_is_no_plugin_repository(self):
+        config, script = self.installed_copy()
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(script))))
+        self.write(root, "skills/analyze-context/SKILL.md", "---\nname: analyze-context\ndescription: %s\n---\n본문\n" % ("사" * 12))
+        self.write(root, "skills/no-front-matter/SKILL.md", "머리말이 없는 스킬 문서\n")
+        done = subprocess.run([sys.executable, script, self.kb, "--today", TODAY, "--json", "--no-write",
+                               "--projects-dir", self.projects],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(os.environ, TZ="Asia/Seoul", CLAUDE_CONFIG_DIR=config))
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8"))
+        last, this = json.loads(done.stdout.decode("utf-8"))["usage"]
+        self.assertEqual((last["skill_desc_chars"], last["skill_count"]), (None, None))   # 지난 주의 설치본은 알 수 없다
+        self.assertEqual((this["skill_desc_chars"], this["skill_count"]), (12, 2))
 
     def test_errors(self):
         self.assertEqual(self.measure(kb=self.tmp)[0], 1)
