@@ -20,7 +20,7 @@ description: 매일 새벽 예약 작업의 메인 세션이 따르는 진행 �
 | 0 | 측정: 세션 기록과 저장소에서 주 단위 숫자를 뽑아 `evolve/metrics.md`를 고친다 | 없음 | 없음. 메인 세션이 `measure.py`를 직접 돌린다 | 메인 세션 | 메인 세션 |
 | 1 | 기록: 메모 줄마다 세션 기록에서 그 일을 뽑아 원본 기록(`status: draft`)을 만든다 | 정리 안 된 메모 0줄이고 `draft` 0건 | `write-records/SKILL.md` | `fable` | `high` |
 | 2 | 기록 확인: 만든 기록을 다른 눈으로 확인해 기록마다 판정을 낸다 | 1단계를 건너뛴 날 | 서브에이전트 `task-workflow:record-checker` (지침은 그 정의에 있다) | `opus` | `high` |
-| 3 | 분석과 규칙 고치기: 확정된 사례와 측정값으로 규칙과 정리 방식을 고친다 | 새로 확정된 기록 0건이고 판정 조건에 걸린 측정값도 없을 때 | `analyze-context/SKILL.md` | `fable` | `high` |
+| 3 | 분석과 규칙 고치기: 확정된 사례와 측정값으로 규칙과 정리 방식을 고친다 | 새로 확정된 기록 0건이고 판정 조건에 걸린 측정값도, 볼 날짜가 된 시도도 없을 때 | `analyze-context/SKILL.md` | `fable` | `high` |
 | 4 | 정리: 확정된 기록을 요약 문서·카드에 올리고, 대체된 기록을 찾고, 점검하고 push한다 | 올릴 것이 없으면 메인 세션이 점검과 push만 한다 | `librarian/SKILL.md`, `librarian/references/shelving.md` | `opus` | `high` |
 | 5 | 구조 점검: 문서를 나눌지 합칠지 판단하고 점검 스크립트의 알림을 처리한다 | 토요일 단계를 안 돌리는 날 | `librarian/SKILL.md`, `librarian/references/structure.md` | `fable` | `high` |
 | 6 | 사용자 분석 다시 보기: 그 주 사례를 지난 분석 기록에 대어 보고 달라졌으면 새로 쓰기 | 위와 같다 | `analyze-context/references/user-analysis.md` | `fable` | `high` |
@@ -111,7 +111,7 @@ git -C "<지식 베이스>" diff --cached --quiet -- evolve/metrics.md || git -C
 
 ### 3단계 분석과 규칙 고치기
 
-- 목표: 새로 확정된 사례에 `## 분석`이 채워지고, 고칠 규칙과 정리 방식이 고쳐져 커밋되고, 상태 파일이 이번 실행 결과와 맞다.
+- 목표: 새로 확정된 사례에 `## 분석`이 채워지고, 볼 날짜가 된 시도에 결과가 적히고, 고칠 규칙과 정리 방식이 고쳐져 커밋되고, 상태 파일이 이번 실행 결과와 맞다.
 - 더 주는 것. 앞 단계의 보고 줄을 고쳐 쓰지 않고 그대로 붙인다.
   - 이번 실행에서 확정된(`status: active`가 된) 기록 id 목록. 없으면 "없음".
   - `draft`로 남은 기록 id와 그 판정 줄. 상태 파일 "확정을 기다리는 기록"에 쓰인다.
@@ -176,6 +176,10 @@ python3 "<스킬 모음 폴더>/write-records/scripts/session_extract.py" pendin
   for d in cases decisions context; do grep -L '^status: draft' "<지식 베이스>"/raw/$d/*.md | sort | tail -1; done
   ```
 - 판정 조건에 걸린 측정값이 없다. 상태 파일 "지켜보는 측정값" 절의 줄마다 `evolve/metrics.md` 표의 마지막 줄(이번 주)에서 그 이름의 칸을 찾아 줄에 적힌 조건(`이상`이나 `이하`와 숫자)에 맞는지 본다. 맞는 줄이 하나도 없거나 절이 `- 없음`이면 없는 것이다. 맞는 줄이 있으면 그 줄을 3단계에 넘긴다.
+- 볼 날짜가 된 시도가 없다. 추정 기록에서 상태가 "지켜보는 중"이고 볼 날짜가 오늘이거나 지난 시도다. 아래 명령의 마지막 줄이 `합계 0`이면 없는 것이다. 있으면 3단계가 그 시도의 결과를 센다.
+  ```bash
+  python3 "<스킬 모음 폴더>/analyze-context/scripts/count_recurrence.py" due "<지식 베이스>" | tail -1
+  ```
 - 2단계가 `스크립트 불일치`를 내지 않았고 1단계 보고가 "종료 코드 3: 없음"이다. 둘 중 하나라도 나온 날은 3단계가 스크립트를 고쳐야 한다. 1단계가 돌지 않은 날은 없는 것으로 본다.
 
 상태 파일 "보류한 후보"와 "판정 못 한 것"에 남은 항목은 조건이 아니다. 새 기록이 들어온 날의 3단계가 함께 본다.
