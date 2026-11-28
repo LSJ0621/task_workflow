@@ -11,12 +11,14 @@
       볼 날짜 줄이 없는 시도도 찍는다. 마지막 줄이 "합계 n"이다. 세션 기록은 읽지 않는다.
 종료 코드 0 성공, 1 조건이나 환경 오류, 2 인자 오류.
 
-세는 단위는 턴이다. 턴은 사용자 입력 하나와, 다음 사용자 입력 전까지 에이전트가 한 말과 부른 스킬이다.
+세는 단위는 턴이다. 턴은 사용자 입력 하나와, 다음 사용자 입력 전까지 에이전트가 한 말과 부른 스킬·도구다.
 
-조건은 `<어디>:<정규식>` 꼴이다. 어디는 넷 가운데 하나다.
+조건은 `<어디>:<정규식>` 꼴이다. 어디는 다섯 가운데 하나다.
   user   사용자가 친 글. 인용 답장 표시(`<!-- reply`)처럼 입력에 붙어 온 표시도 이 글에 있다
   agent  에이전트가 사용자에게 보인 글
   skill  그 턴에 부른 스킬 이름(Skill 도구로 부른 것과 사용자가 `/이름`으로 친 것)
+  tool   그 턴에 메인 세션이 부른 도구 이름(Write, Edit, Agent, Bash 같은 것). 정규식은 이름에만 댄다.
+         찍는 줄에는 기록 스크립트가 싣는 칸(파일 경로, 설명, 서브에이전트 종류)도 같이 나온다
   hook   그 입력에 훅(UserPromptSubmit)이 붙인 알림 글
   어디 앞에 `!`를 붙이면(`!hook:...`) 그 턴에 그런 것이 없을 때 맞는다.
 정규식은 파이썬 re 문법이고 대소문자를 가린다. 낱말만 적어도 된다.
@@ -42,7 +44,7 @@
 import argparse, datetime, importlib.util, json, os, pathlib, re, sys
 
 SHOW = 80
-PLACES = ("user", "agent", "skill", "hook")
+PLACES = ("user", "agent", "skill", "tool", "hook")
 HOOK_EVENT = "UserPromptSubmit"
 MASKED = "[비밀값이 있어 가림]"
 SLASH_RE = re.compile(r"^/([A-Za-z][\w-]*(?::[\w-]+)?)(?=\s|$)")
@@ -119,7 +121,7 @@ def hook_text(attachment):
 
 
 def new_turn(key, timestamp, text):
-    turn = {"key": key, "user": [], "agent": [], "skill": [], "hook": []}
+    turn = {"key": key, "user": [], "agent": [], "skill": [], "tool": [], "hook": []}
     if text is not None:
         turn["user"].append((timestamp, text))
         named = SLASH_RE.match(text)
@@ -169,6 +171,7 @@ def read_session(path, extractor, measure):
                     turns[-1]["agent"].append((stamp, unquote(lines)))
                 elif who == "도구":
                     for item in lines:
+                        turns[-1]["tool"].append((stamp, item[2:] if item.startswith("- ") else item))
                         if item.startswith(SKILL_LINE):
                             turns[-1]["skill"].append((stamp, item[len(SKILL_LINE):].strip()))
     return turns, scheduled
@@ -222,9 +225,10 @@ def match_turn(turn, conditions):
     for cond in conditions:
         found = None
         for stamp, text in turn[cond["place"]]:
-            m = cond["re"].search(text)
+            # 도구는 이름에만 댄다. 설명이나 경로에 든 낱말이 도구 이름으로 걸리지 않게 하기 위해서다
+            m = cond["re"].search(text.split(":", 1)[0] if cond["place"] == "tool" else text)
             if m:
-                found = (cond["place"], stamp, text, m.span())
+                found = (cond["place"], stamp, text, (0, 0) if cond["place"] == "tool" else m.span())
                 break
         if cond["absent"]:
             if found:

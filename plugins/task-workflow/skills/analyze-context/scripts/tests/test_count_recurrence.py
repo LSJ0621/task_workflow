@@ -43,6 +43,13 @@ def agent(number, minute, text=None, skill=None, day=DAY):
             "message": {"role": "assistant", "model": "claude-fake-1", "content": blocks}}
 
 
+def tool_calls(number, minute, calls, day=DAY):
+    """도구 호출만 든 에이전트 줄. calls 는 [(도구 이름, 입력)]"""
+    blocks = [{"type": "tool_use", "id": "t%d-%d" % (number, i), "name": name, "input": params} for i, (name, params) in enumerate(calls)]
+    return {"type": "assistant", "uuid": uid(number), "timestamp": stamp(minute, day), "isSidechain": False,
+            "message": {"role": "assistant", "model": "claude-fake-1", "content": blocks}}
+
+
 def hook(number, minute, text, event="UserPromptSubmit", day=DAY):
     return {"type": "attachment", "uuid": uid(number), "timestamp": stamp(minute, day), "isSidechain": False,
             "attachment": {"type": "hook_success", "hookEvent": event, "hookName": event, "content": text, "stdout": text + "\n"}}
@@ -137,6 +144,31 @@ class CountRecurrenceTest(unittest.TestCase):
         self.assertIn("skill | fake-plugin:split-work", out)
         self.assertEqual(self.last(*same, "--session", "bbbbbbbb"), "같은 상황 1번")
 
+    # -- 도구 호출 --------------------------------------------------------------
+
+    def test_tool_calls_match_by_tool_name_only(self):
+        self.session(A, [
+            human(1, 0, "지침 파일을 써 줘"),
+            tool_calls(2, 1, [("Write", {"file_path": "/fake/app/GUIDE.md"}), ("Bash", {"command": "ls", "description": "지어낸 설명"})]),
+            human(3, 2, "왜 묻지 않고 썼어"),
+            tool_calls(4, 3, [("Bash", {"command": "ls", "description": "Write 라는 낱말이 든 설명"}), ("Read", {"file_path": "/fake/app/Edit.md"})]),
+            human(5, 4, "나눠서 맡겨"),
+            tool_calls(6, 5, [("Agent", {"subagent_type": "fake-worker", "description": "지어낸 일", "prompt": "지어낸 지시"}),
+                              ("Edit", {"file_path": "/fake/app/a.txt"})]),
+            human(7, 6, "계속"),
+            {"type": "assistant", "uuid": uid(8), "timestamp": stamp(7), "isSidechain": True,       # 서브에이전트 안쪽의 호출은 세지 않는다
+             "message": {"role": "assistant", "model": "claude-fake-1",
+                         "content": [{"type": "tool_use", "id": "t8", "name": "Write", "input": {"file_path": "/fake/app/b.txt"}}]}},
+        ])
+        out = self.count("--same", "tool:^(Write|Edit)$")
+        self.assertEqual(out.strip().splitlines()[-1], "같은 상황 2번")      # 설명이나 경로에 든 낱말은 도구 이름이 아니다
+        self.assertIn("[같은 상황] %s 2026-01-06 12:01:00 tool | Write: /fake/app/GUIDE.md" % A, out)
+        self.assertIn("tool | Edit: /fake/app/a.txt", out)
+        self.assertEqual(self.last("--same", "tool:Agent"), "같은 상황 1번")
+        self.assertEqual(self.last("--same", "tool:^Write$", "--recur", "user:왜 묻지 않고", "--within", "1"), "같은 상황 1번 중 재발 1번")
+        self.assertEqual(self.last("--same", "user:.", "--recur", "!tool:."), "같은 상황 4번 중 재발 1번")   # 도구를 하나도 안 부른 턴
+        self.assertEqual(self.last("--same", "user:맡겨", "--recur", "tool:Agent"), "같은 상황 1번 중 재발 1번")
+
     # -- 빼는 것 -----------------------------------------------------------------
 
     def test_scheduled_subagent_and_sidechain_are_left_out(self):
@@ -195,7 +227,7 @@ class CountRecurrenceTest(unittest.TestCase):
         self.assertEqual(data["hits"][0]["recur"][0]["where"], "hook")
 
     def test_bad_condition_is_an_error(self):
-        for spec in ("user", "nowhere:말", "user:("):
+        for spec in ("user", "nowhere:말", "user:(", "tool:"):
             code, _, err = self.run_script("count", "--projects-dir", self.projects, "--since", "2026-01-01", "--same", spec)
             self.assertEqual(code, 1, spec)
             self.assertTrue(err.strip())
