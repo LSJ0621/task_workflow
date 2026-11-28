@@ -4,15 +4,22 @@
 목록을 쓰는 일만 하고 가르는 일은 서브에이전트가 한다.
 
 명령
-  candidates [<지식 베이스>] [--day YYYY-MM-DD ...] [--today YYYY-MM-DD] [--out <폴더>] [--projects-dir <폴더>]
-      날마다 후보 파일 <out>/<날짜>.candidates.md 를 쓴다. 날을 안 주면 모을 날이다:
-      어제까지 7일 안에서 목록이 없는 날. 가장 오래된 목록보다 앞선 날은 보지 않는다
+  days [<지식 베이스>] [--today YYYY-MM-DD]
+      모을 날을 한 줄에 하나씩 찍고 마지막 줄에 "합계 n일"을 찍는다. 세션 기록을 읽지 않고 파일도 쓰지 않는다.
+      모을 날은 어제까지 7일 안에서 목록이 없는 날이다. 가장 오래된 목록보다 앞선 날은 보지 않는다
       (모으기를 시작하기 전의 날이다). 목록이 하나도 없으면 어제 하루다.
+  candidates [<지식 베이스>] [--day YYYY-MM-DD ...] [--today YYYY-MM-DD] [--out <폴더>] [--projects-dir <폴더>]
+      날마다 후보 파일 <out>/<날짜>.candidates.md 를 쓴다. 날을 안 주면 days 가 찍는 날이다.
       날마다 "<날짜> | 후보 n건 | <후보 파일>" 한 줄을 찍고 마지막 줄에 "합계 n일"을 찍는다.
   write [<지식 베이스>] --day YYYY-MM-DD --decisions <파일> [--list-dir <폴더>] [--projects-dir <폴더>]
       그날의 후보를 다시 뽑아, 가른 결과 파일에 적힌 후보만 목록 <지식 베이스>/evolve/signals/<날짜>.md 로 쓴다.
-      --list-dir 을 주면 목록을 그 폴더에 쓴다(시험할 때). 같은 날의 목록이 있으면 덮어쓴다.
+      --list-dir 을 주면 목록을 그 폴더에 쓴다(시험하거나 미리 볼 때). 같은 날의 목록이 있으면 덮어쓴다.
+      목록을 쓰고 나면 가른 결과 파일과 그 옆의 그날 후보 파일을 지운다.
 종료 코드 0 성공, 1 환경이나 가른 결과 파일의 오류, 2 인자 오류.
+
+후보 파일에는 사용자 글과 앞 답이 들어 있다. 그래서 본인만 읽을 수 있게 쓴다(폴더 0700, 파일 0600).
+--out 을 안 주면 <임시 폴더>/collect-signals-<오늘 날짜>/ 에 쓴다. 임시 폴더는 $TMPDIR 이고 없으면 시스템 기본값이다.
+그때는 쓰기 전에 지난 실행이 남긴 collect-signals-* 폴더를 지운다. 가르다가 멈춘 날의 후보 파일이 남지 않게 하기 위해서다.
 
 후보는 그날(이 컴퓨터의 시간대) 사람이 친 입력 전부다. 예약 작업 세션과 서브에이전트 기록은 빼고, 이어 연 세션에
 복사된 같은 줄은 한 번만 싣는다. 읽는 방법은 세는 스크립트(count_recurrence.py)와 같다.
@@ -30,13 +37,14 @@
 
 세션 기록은 --projects-dir, 없으면 <Claude 설정 폴더>/projects 에서 읽는다.
 """
-import argparse, datetime, json, os, pathlib, re, sys
+import argparse, datetime, json, os, pathlib, re, shutil, sys, tempfile
 
 KINDS = ("지적", "다시 물음", "만족", "선택")
 SHOW = 80
 HEAD, TAIL, USER_SHOW = 150, 300, 600
 MAX_DAYS = 7
 LIST_DIR = ("evolve", "signals")
+OUT_PREFIX = "collect-signals-"
 RECORD_DIRS = ("cases", "decisions", "context")
 SECRET_MASK = "[비밀값이 있어 가림]"
 HIDDEN = "[가림]"
@@ -320,16 +328,58 @@ def days_to_collect(kb, today):
     return [day for day in days if day not in done]
 
 
+def owned(path):
+    return not hasattr(os, "getuid") or path.lstat().st_uid == os.getuid()
+
+
+def private_dir(path):
+    """본인만 읽을 수 있는 폴더로 만든다. 남의 폴더면 쓰지 않는다."""
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if path.is_symlink() or not owned(path):
+        fail(f"후보 파일을 쓸 폴더가 내 것이 아니다: {path}")
+    os.chmod(path, 0o700)
+
+
+def write_private(path, text):
+    handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(handle, "w", encoding="utf-8") as stream:
+        os.chmod(path, 0o600)
+        stream.write(text)
+
+
+def drop_leftovers(root, keep):
+    """지난 실행이 남긴 후보 폴더를 지운다. 내 것이고 이름이 collect-signals- 로 시작하는 폴더만 지운다."""
+    for path in root.glob(OUT_PREFIX + "*"):
+        if path != keep and path.is_dir() and not path.is_symlink() and owned(path):
+            shutil.rmtree(path, ignore_errors=True)
+    for path in list(keep.glob("*.candidates.md")) + list(keep.glob("*.decisions.md")) if keep.is_dir() else []:
+        path.unlink()
+
+
+def cmd_days(a):
+    kb = knowledge_base(a)
+    days = days_to_collect(kb, parse_day(a.today) if a.today else datetime.date.today())
+    for day in days:
+        print(day.isoformat())
+    print(f"합계 {len(days)}일")
+
+
 def cmd_candidates(a):
     kb, counter = knowledge_base(a), load_counter()
     today = parse_day(a.today) if a.today else datetime.date.today()
     days = [parse_day(value) for value in a.day] if a.day else days_to_collect(kb, today)
-    out = pathlib.Path(a.out).expanduser() if a.out else pathlib.Path("/tmp") / f"collect-signals-{today.isoformat()}"
-    out.mkdir(parents=True, exist_ok=True)
+    if a.out:
+        out = pathlib.Path(a.out).expanduser()
+    else:
+        root = pathlib.Path(tempfile.gettempdir())
+        out = root / f"{OUT_PREFIX}{today.isoformat()}"
+        drop_leftovers(root, out)
+    if days:
+        private_dir(out)
     for day in days:
         rows, find_secret = collect(kb, day, projects_dir(a, counter), counter)
         target = out / f"{day.isoformat()}.candidates.md"
-        target.write_text(candidate_text(day, rows, find_secret), encoding="utf-8")
+        write_private(target, candidate_text(day, rows, find_secret))
         print(f"{day.isoformat()} | 후보 {len(rows)}건 | {target}")
     print(f"합계 {len(days)}일")
 
@@ -347,11 +397,22 @@ def cmd_write(a):
     target.write_text(text, encoding="utf-8")
     print(f"씀: {target}")
     print(summary)
+    # 목록을 썼으니 사용자 글이 든 후보 파일과 가른 결과 파일은 더 두지 않는다
+    decisions = pathlib.Path(a.decisions)
+    for path in (decisions, decisions.parent / f"{day.isoformat()}.candidates.md"):
+        if path.is_file():
+            path.unlink()
+    if decisions.parent.name.startswith(OUT_PREFIX) and not any(decisions.parent.iterdir()):
+        decisions.parent.rmdir()
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
+    d = sub.add_parser("days")
+    d.add_argument("knowledge_base", nargs="?", default=os.environ.get("KNOWLEDGE_BASE_DIR"))
+    d.add_argument("--today")
+    d.set_defaults(run=cmd_days)
     c = sub.add_parser("candidates")
     c.add_argument("knowledge_base", nargs="?", default=os.environ.get("KNOWLEDGE_BASE_DIR"))
     c.add_argument("--day", action="append", default=[])

@@ -5,6 +5,7 @@
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,8 @@ class CollectSignalsTest(unittest.TestCase):
         self.kb = os.path.join(self.tmp, "kb")
         self.projects = os.path.join(self.tmp, "projects")
         self.out = os.path.join(self.tmp, "out")
+        self.temp_root = os.path.join(self.tmp, "temp-root")
+        os.makedirs(self.temp_root)
         for folder in ("raw/journal", "raw/cases", "raw/decisions", "raw/context"):
             os.makedirs(os.path.join(self.kb, folder))
         os.makedirs(self.projects)
@@ -63,7 +66,7 @@ class CollectSignalsTest(unittest.TestCase):
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     def run_script(self, *args):
-        env = dict(os.environ, TZ="Asia/Seoul")
+        env = dict(os.environ, TZ="Asia/Seoul", TMPDIR=self.temp_root)   # --out 을 안 주면 후보 폴더가 여기에 생긴다
         done = subprocess.run([sys.executable, SCRIPT] + list(args), capture_output=True, text=True, env=env)
         return done.returncode, done.stdout, done.stderr
 
@@ -189,6 +192,84 @@ class CollectSignalsTest(unittest.TestCase):
                          ["2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16", "2026-01-17", "2026-01-18"])
         self.assertEqual(days(self.candidates("--today", "2026-01-07")), [])                         # 가장 오래된 목록보다 앞선 날은 보지 않는다
 
+    def test_days_command_lists_days_and_writes_nothing(self):
+        self.session(A, [human(1, 0, "지어낸 말")])
+        self.write("evolve/signals/2026-01-06.md", "# 모은 말 2026-01-06\n")
+        self.write("evolve/signals/2026-01-08.md", "# 모은 말 2026-01-08\n")
+        code, out, err = self.run_script("days", self.kb, "--today", "2026-01-10")
+        self.assertEqual((code, out.strip().splitlines()), (0, ["2026-01-07", "2026-01-09", "합계 2일"]), err)
+        self.assertEqual(os.listdir(self.temp_root), [])
+
+    # -- 후보 파일을 남기지 않기 ------------------------------------------------
+
+    def mode(self, path):
+        return stat.S_IMODE(os.stat(path).st_mode)
+
+    def test_candidate_files_are_private(self):
+        self.build_day()
+        code, out, err = self.run_script("candidates", self.kb, "--projects-dir", self.projects, "--day", DAY, "--today", "2026-01-07")
+        self.assertEqual(code, 0, err)
+        folder = os.path.join(self.temp_root, "collect-signals-2026-01-07")
+        self.assertEqual(out.strip().splitlines()[0].split(" | ")[2], os.path.join(folder, DAY + ".candidates.md"))
+        self.assertEqual(self.mode(folder), 0o700)
+        self.assertEqual(self.mode(os.path.join(folder, DAY + ".candidates.md")), 0o600)
+        os.makedirs(self.out)
+        os.chmod(self.out, 0o755)                                          # 열려 있던 폴더도 닫고 쓴다
+        self.candidates("--day", DAY)
+        self.assertEqual(self.mode(self.out), 0o700)
+        self.assertEqual(self.mode(os.path.join(self.out, DAY + ".candidates.md")), 0o600)
+
+    def test_write_removes_candidate_and_decision_files(self):
+        self.build_day()
+        code, _, err = self.run_script("candidates", self.kb, "--projects-dir", self.projects, "--day", DAY, "--today", "2026-01-07")
+        self.assertEqual(code, 0, err)
+        folder = os.path.join(self.temp_root, "collect-signals-2026-01-07")
+        decisions = os.path.join(folder, DAY + ".decisions.md")
+        with open(decisions, "w", encoding="utf-8") as handle:
+            handle.write("00000003 | 칭찬\n")
+        args = ("write", self.kb, "--projects-dir", self.projects, "--day", DAY, "--decisions", decisions)
+        self.assertEqual(self.run_script(*args)[0], 1)                     # 읽을 수 없으면 고쳐서 다시 돌리게 그대로 둔다
+        self.assertEqual(sorted(os.listdir(folder)), [DAY + ".candidates.md", DAY + ".decisions.md"])
+        with open(decisions, "w", encoding="utf-8") as handle:
+            handle.write("00000003 | 다시 물음\n")
+        code, _, err = self.run_script(*args)
+        self.assertEqual(code, 0, err)
+        self.assertIn("| 다시 물음 |", self.read_list())
+        self.assertFalse(os.path.exists(folder))                           # 두 파일을 지우고 빈 폴더도 지운다
+
+    def test_write_for_preview_also_removes_them_and_keeps_other_days(self):
+        self.build_day()
+        self.session(C, [human(51, 0, "다음 날의 말", day="2026-01-07")])
+        code, _, err = self.run_script("candidates", self.kb, "--projects-dir", self.projects, "--day", DAY, "--day", "2026-01-07",
+                                       "--today", "2026-01-08")
+        self.assertEqual(code, 0, err)
+        folder = os.path.join(self.temp_root, "collect-signals-2026-01-08")
+        decisions = os.path.join(folder, DAY + ".decisions.md")
+        with open(decisions, "w", encoding="utf-8") as handle:
+            handle.write("")
+        code, _, err = self.run_script("write", self.kb, "--projects-dir", self.projects, "--day", DAY, "--decisions", decisions,
+                                       "--list-dir", os.path.join(self.tmp, "preview"))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(os.listdir(folder), ["2026-01-07.candidates.md"])   # 아직 가르지 않은 날의 후보는 둔다
+
+    def test_candidates_drop_folders_left_by_earlier_runs(self):
+        self.build_day()
+        left = os.path.join(self.temp_root, "collect-signals-2026-01-05")
+        other = os.path.join(self.temp_root, "other-folder")
+        os.makedirs(left)
+        os.makedirs(other)
+        for folder in (left, other):
+            with open(os.path.join(folder, "2026-01-04.candidates.md"), "w", encoding="utf-8") as handle:
+                handle.write("지난 실행이 남긴 후보")
+        today_folder = os.path.join(self.temp_root, "collect-signals-2026-01-07")
+        os.makedirs(today_folder)
+        with open(os.path.join(today_folder, "2026-01-03.candidates.md"), "w", encoding="utf-8") as handle:
+            handle.write("같은 날 앞서 돌다 멈춘 실행이 남긴 후보")
+        code, _, err = self.run_script("candidates", self.kb, "--projects-dir", self.projects, "--day", DAY, "--today", "2026-01-07")
+        self.assertEqual(code, 0, err)
+        self.assertFalse(os.path.exists(left))
+        self.assertEqual(os.listdir(today_folder), [DAY + ".candidates.md"])
+        self.assertTrue(os.path.isfile(os.path.join(other, "2026-01-04.candidates.md")))   # 이름이 다른 폴더는 건드리지 않는다
 
     # -- write --------------------------------------------------------------
 

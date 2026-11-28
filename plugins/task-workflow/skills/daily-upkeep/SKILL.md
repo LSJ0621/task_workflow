@@ -95,9 +95,9 @@ git -C "<지식 베이스>" diff --cached --quiet -- evolve/metrics.md evolve/us
 
 - 목표: 아직 목록이 없는 날(어제까지)마다 `evolve/signals/<날짜>.md`가 생겨 커밋된다.
 - 더 주는 것: 지식 베이스 위치, 스킬 모음 폴더.
-- 완료 기준: 아래 명령의 마지막 줄이 `합계 0일`이다. 띄우기 전에 메인 세션이 같은 명령으로 모을 날이 있는지 본다. `합계 0일`이면 건너뛴다.
+- 완료 기준: 아래 명령의 마지막 줄이 `합계 0일`이다. 띄우기 전에 메인 세션이 같은 명령으로 모을 날이 있는지 본다. `합계 0일`이면 건너뛴다. 이 명령은 날짜만 찍고 대화 기록을 읽거나 파일을 쓰지 않는다.
   ```bash
-  python3 "<스킬 모음 폴더>/analyze-context/scripts/collect_signals.py" candidates "<지식 베이스>" --today <오늘 날짜> | tail -1
+  python3 "<스킬 모음 폴더>/analyze-context/scripts/collect_signals.py" days "<지식 베이스>" --today <오늘 날짜> | tail -1
   ```
 - 하지 말 것에 더할 것: push하지 않는다. 메모, 기록, 규칙을 쓰거나 고치지 않는다. 대화 기록의 글을 보고에 옮기지 않는다. 지침 파일의 "하지 말 것"을 지킨다.
 
