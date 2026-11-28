@@ -179,7 +179,7 @@
 <section class="see" id="see">
   <h2>사용자가 볼 것</h2>
   <ul class="items">
-    <!-- 반복: 초안 "사용자가 볼 것"의 줄마다 하나. RPT_SEE_KIND 는 지움, 뒤집음, 사용자가 정한 문장을 바꿈, 또 어김, 기록 없이 바뀜, 판정 조건에 걸림, 해석이 갈림, 지식 베이스에 없음 중 하나. 덧붙일 말이 없으면 detail 줄을 지운다. -->
+    <!-- 반복: 초안 "사용자가 볼 것"의 줄마다 하나. RPT_SEE_KIND 는 지움, 뒤집음, 사용자가 정한 문장을 바꿈, 또 어김, 기록 없이 바뀜, 판정 조건에 걸림, 볼 날짜 지남, 해석이 갈림, 지식 베이스에 없음 중 하나. 덧붙일 말이 없으면 detail 줄을 지운다. -->
     <li>
       <span class="kind">{{RPT_SEE_KIND}}</span>{{RPT_SEE_TEXT}}
       <span class="detail">{{RPT_SEE_DETAIL}}</span>
@@ -216,7 +216,7 @@
 <section id="hypo">
   <h2>원인 추정이 맞았나</h2>
   <ul class="items">
-    <!-- 반복: 초안 "추정 점검"의 줄마다 하나. 줄 맨 앞의 말(아직 지켜봄, 맞는 것으로 봄, 틀려서 다시 봄, 판정 조건에 걸림)을 kind에 넣는다. 초안이 없음이고 검증도 맞음이면 <li class="none">세운 추정 없음</li>. -->
+    <!-- 반복: 초안 "추정 점검"의 줄마다 하나. 줄 맨 앞의 말(아직 지켜봄, 볼 날짜 지남, 맞음으로 정함, 틀려서 다시 봄, 판정 조건에 걸림)을 kind에 넣는다. 초안이 없음이고 검증도 맞음이면 <li class="none">세운 추정 없음</li>. -->
     <li><span class="kind">{{RPT_HYPO_KIND}}</span>{{RPT_HYPO_TEXT}}<span class="ev">{{RPT_EV}}</span></li>
   </ul>
 </section>

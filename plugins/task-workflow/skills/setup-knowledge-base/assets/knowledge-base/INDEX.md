@@ -64,6 +64,8 @@
   - `evolve/rule-cases.md` 규칙별 사례표. 사례마다 관련 규칙과 규칙과 관계
   - `evolve/hypotheses.md` 추정 기록. 규칙 절마다 무엇을 원인으로 보고 무엇을 바꿨는지와 그 추정의 상태. 끝난 것은 `evolve/hypotheses-archive.md`
   - `evolve/metrics.md` 측정값. 주 단위 표
+  - `evolve/usage.md` 쓰임 표. 주마다 다시 물어본 횟수, 메모 없는 지적 수, 오래된 상황판 묶음 수, 스킬별 실행 횟수
+  - `evolve/signals/` 모은 말. 새벽 작업이 대화 기록에서 고른 지적, 되물음, 만족, 선택을 날짜마다 한 파일로 쌓는다
 - `work/` 코드 저장소가 없는 작업의 산출물. 작업마다 폴더 하나
 - `tests/regression.md` 회귀 질문
 
