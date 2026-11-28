@@ -171,8 +171,24 @@ class CollectSignalsTest(unittest.TestCase):
         self.assertEqual(days(self.candidates("--today", "2026-01-10")), ["2026-01-07", "2026-01-08", "2026-01-09"])
         lines = self.candidates("--today", "2026-01-20")                                             # 많아도 7일
         self.assertEqual((days(lines)[0], days(lines)[-1], lines[-1]), ("2026-01-13", "2026-01-19", "합계 7일"))
-        self.write("evolve/signals/2026-01-19.md", "# 모은 말 2026-01-19\n")
+        for day in range(13, 20):                                                                    # 7일 치 목록이 다 있으면 모을 날이 없다
+            self.write("evolve/signals/2026-01-%d.md" % day, "# 모은 말 2026-01-%d\n" % day)
         self.assertEqual(self.candidates("--today", "2026-01-20"), ["합계 0일"])
+
+    def test_days_without_a_list_are_collected_again(self):
+        self.session(A, [human(1, 0, "지어낸 말")])
+        days = lambda lines: [line.split(" | ")[0] for line in lines[:-1]]
+        self.write("evolve/signals/2026-01-06.md", "# 모은 말 2026-01-06\n")
+        self.write("evolve/signals/2026-01-08.md", "# 모은 말 2026-01-08\n")
+        self.assertEqual(days(self.candidates("--today", "2026-01-09")), ["2026-01-07"])            # 목록 사이에 빠진 날
+        self.assertEqual(days(self.candidates("--today", "2026-01-11")), ["2026-01-07", "2026-01-09", "2026-01-10"])
+        self.assertEqual(days(self.candidates("--today", "2026-01-15")),                              # 7일 전보다 앞선 빈 날은 놓는다
+                         ["2026-01-09", "2026-01-10", "2026-01-11", "2026-01-12", "2026-01-13", "2026-01-14"])
+        self.write("evolve/signals/2026-01-19.md", "# 모은 말 2026-01-19\n")
+        self.assertEqual(days(self.candidates("--today", "2026-01-20")),
+                         ["2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16", "2026-01-17", "2026-01-18"])
+        self.assertEqual(days(self.candidates("--today", "2026-01-07")), [])                         # 가장 오래된 목록보다 앞선 날은 보지 않는다
+
 
     # -- write --------------------------------------------------------------
 

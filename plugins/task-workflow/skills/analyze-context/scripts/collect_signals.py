@@ -5,8 +5,9 @@
 
 명령
   candidates [<지식 베이스>] [--day YYYY-MM-DD ...] [--today YYYY-MM-DD] [--out <폴더>] [--projects-dir <폴더>]
-      날마다 후보 파일 <out>/<날짜>.candidates.md 를 쓴다. 날을 안 주면 아직 목록이 없는 날이다:
-      가장 새 목록의 다음 날부터 어제까지, 많아도 7일. 목록이 하나도 없으면 어제 하루다.
+      날마다 후보 파일 <out>/<날짜>.candidates.md 를 쓴다. 날을 안 주면 모을 날이다:
+      어제까지 7일 안에서 목록이 없는 날. 가장 오래된 목록보다 앞선 날은 보지 않는다
+      (모으기를 시작하기 전의 날이다). 목록이 하나도 없으면 어제 하루다.
       날마다 "<날짜> | 후보 n건 | <후보 파일>" 한 줄을 찍고 마지막 줄에 "합계 n일"을 찍는다.
   write [<지식 베이스>] --day YYYY-MM-DD --decisions <파일> [--list-dir <폴더>] [--projects-dir <폴더>]
       그날의 후보를 다시 뽑아, 가른 결과 파일에 적힌 후보만 목록 <지식 베이스>/evolve/signals/<날짜>.md 로 쓴다.
@@ -304,16 +305,19 @@ def projects_dir(a, counter):
 
 
 def days_to_collect(kb, today):
+    """어제까지 MAX_DAYS 일 안에서 목록이 없는 날. 가장 오래된 목록보다 앞선 날은 뺀다. 목록이 없으면 어제 하루."""
     yesterday = today - datetime.timedelta(days=1)
-    done = []
+    done = set()
     for path in kb.joinpath(*LIST_DIR).glob("*.md"):
         try:
-            done.append(datetime.date.fromisoformat(path.stem))
+            done.add(datetime.date.fromisoformat(path.stem))
         except ValueError:
             continue
-    first = max(done) + datetime.timedelta(days=1) if done else yesterday
-    first = max(first, yesterday - datetime.timedelta(days=MAX_DAYS - 1))
-    return [first + datetime.timedelta(days=step) for step in range((yesterday - first).days + 1)]
+    if not done:
+        return [yesterday]
+    first = max(min(done), yesterday - datetime.timedelta(days=MAX_DAYS - 1))
+    days = [first + datetime.timedelta(days=step) for step in range((yesterday - first).days + 1)]
+    return [day for day in days if day not in done]
 
 
 def cmd_candidates(a):
