@@ -43,7 +43,6 @@ REPLY_MARK = "<!-- reply"
 MEMO_RE = re.compile(r"^(\d{1,2}:\d{2}) \| ")
 QUOTE_RE = re.compile(r"[\"“]([^\"“”]{6,})[\"”]")
 HAVE_RE = re.compile(r"^(없음|메모 \d{1,2}:\d{2}|[CDX]-\d{8}-\d{2})$")
-ROW_RE = re.compile(r"^\| \d{2}:\d{2} \| ")
 INFRA_PATTERNS = (
     re.compile(r"arn:aws[\w-]*:[\w:/.*-]+"),
     re.compile(r"\b(?:vpc|subnet|sg|igw|rtb|eni|nat|acl|vol|snap|ami|i|eipalloc|tgw|pcx|vpce)-[0-9a-f]{8,17}\b"),
@@ -281,16 +280,6 @@ def list_text(day, rows, picked, find_secret):
         lines.append("| " + " | ".join([row["when"].strftime("%H:%M"), row["session"], kind, said, have]) + " |")
     return "\n".join(lines) + "\n", summary
 
-
-def read_list(path):
-    """목록 파일의 줄. [{time, session, kind, said, have}]. 측정 스크립트가 쓴다."""
-    rows = []
-    for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
-        if ROW_RE.match(line):
-            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-            if len(cells) == len(HEADER):
-                rows.append(dict(zip(("time", "session", "kind", "said", "have"), cells)))
-    return rows
 
 # ---------------------------------------------------------------------------
 

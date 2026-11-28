@@ -32,6 +32,17 @@
 - memo_lines      메모 줄 수. raw/journal/ 의 그 주 날짜 파일에서 `HH:MM | `로 시작하는 줄.
 읽을 수 없는 값(저장소가 없다 같은 것)은 표에 `-`, JSON에 null 로 적는다.
 
+쓰임 표(evolve/usage.md)도 함께 고친다. 위 표의 열은 다른 스킬이 이름으로 읽어서 건드리지 않고 파일을 따로 둔다.
+같은 주를 다시 세어 덮어쓰고, JSON에는 "usage" 로 따로 싣는다. 주마다 아래를 센다.
+- reasks, bare_corrections, collected_days
+                  새벽 작업이 모은 말(evolve/signals/YYYY-MM-DD.md, collect_signals.py 가 쓴다)의 그 주 날짜 파일에서 센다.
+                  다시 물어본 말 수, 메모도 기록도 없는 지적 수, 목록이 있는 날 수. 목록이 하나도 없는 주는 앞의 둘을 비운다.
+- stale_board     상황판(wiki/board.md)에서 고친 날짜가 그 주의 센 마지막 날보다 14일 넘게 앞선 묶음 수.
+                  이번 주는 지금 파일에서, 지난 주는 그 주 끝에 지식 베이스에 커밋되어 있던 상황판에서 센다.
+- skill_runs      {스킬 이름: Skill 도구로 부른 횟수}. 예약 작업 세션은 빼고 서브에이전트가 부른 것은 센다.
+                  이어 연 세션에 복사된 같은 호출은 한 번만 센다.
+- skills_unused   이 스크립트가 든 플러그인의 스킬 가운데 그 주에 한 번도 안 불린 것.
+
 경로는 인자나 환경 변수로 받는다. 스크립트에 개인 경로를 적지 않는다.
 - 세션 기록: --projects-dir, 없으면 <Claude 설정 폴더>/projects (Claude 설정 폴더는 $CLAUDE_CONFIG_DIR 또는 ~/.claude)
 - 세션 기록에서 지식 베이스로 볼 경로: --read-root(여러 번 줄 수 있다), 없으면 지식 베이스의 실제 경로와 $KNOWLEDGE_BASE_DIR
@@ -66,6 +77,27 @@ NOTES = [
     "- 메모 줄: `raw/journal/`의 그 주 날짜 파일에 적힌 메모 줄 수.",
     "- `-`는 읽을 수 없었던 값이다.",
 ]
+USAGE_HEADER = ["주", "다시 물음", "메모 없는 지적", "모은 날", "오래된 상황판 묶음", "스킬 실행"]
+USAGE_INTRO = [
+    "# 쓰임",
+    "",
+    "`measure.py`(자가 발전 스킬의 스크립트)가 측정값(`metrics.md`)과 함께 고쳐 쓴다. 손으로 고치지 않는다.",
+    "주는 측정값 표와 같게 나눈다.",
+    "",
+]
+USAGE_NOTES = [
+    "",
+    "## 세는 방법",
+    "",
+    "- 다시 물음, 메모 없는 지적: 새벽 작업이 모은 말(`evolve/signals/`)의 그 주 날짜 파일에서 센다. 메모 없는 지적은 종류가 지적이고 메모·기록이 없음인 줄이다.",
+    "- 모은 날: 그 주에 모은 말 목록이 있는 날 수. 목록이 하나도 없는 주는 앞의 두 칸이 `-`다.",
+    "- 오래된 상황판 묶음: 상황판(`wiki/board.md`)에서 고친 날짜가 그 주의 센 마지막 날보다 14일 넘게 앞선 묶음 수.",
+    "- 스킬 실행: Skill 도구로 부른 횟수. 예약 작업 세션은 뺀다. `안 불림:` 뒤는 이 플러그인의 스킬 가운데 그 주에 한 번도 안 불린 것이다.",
+    "- `-`는 읽을 수 없었던 값이다.",
+]
+STALE_DAYS = 14
+SIGNAL_ROW_RE = re.compile(r"^\| \d{2}:\d{2} \| ")
+BOARD_DAY_RE = re.compile(r"^- 고친 날짜:\s*(\d{4}-\d{2}-\d{2})")
 WHO_RE = re.compile(r"^[ \t]*누가 정했(?:는지|나)[ \t]*:[ \t]*(자가 발전|사용자)", re.M)   # 줄이 이 말로 시작할 때만
 PLUGIN_REPO_ENV = "PLUGIN_REPO_DIR"
 MEMO_RE = re.compile(r"^\d{1,2}:\d{2} \| ")
@@ -396,6 +428,8 @@ def scan_file(path, session, kb_paths, extractor, main):
                         continue
                     session["tools"] += 1
                     params = block.get("input") if isinstance(block.get("input"), dict) else {}
+                    if block.get("name") == "Skill" and isinstance(params.get("skill"), str) and params["skill"].strip():
+                        session["skills"].append((block.get("id"), data.get("timestamp"), params["skill"].strip()))
                     session["reads"] |= kb_paths.reads_in_tool(block.get("name"), params, data.get("cwd") or session["cwd"])
             elif main and kind in ("user", "attachment"):
                 if kind == "user":
@@ -410,7 +444,7 @@ def scan_file(path, session, kb_paths, extractor, main):
                     session["messages"].append((data.get("uuid"), data.get("timestamp")))
 
 def scan_sessions(projects, earliest, kb_paths, extractor):
-    """{세션 id: {start, cwd, scheduled, tools, reads, messages}}. earliest 보다 전에 마지막으로 고친 파일은 읽지 않는다."""
+    """{세션 id: {start, cwd, scheduled, tools, reads, messages, skills}}. earliest 보다 전에 마지막으로 고친 파일은 읽지 않는다."""
     sessions = {}
     floor = datetime.datetime.combine(earliest, datetime.time()).timestamp()
     if not projects.is_dir():
@@ -428,7 +462,7 @@ def scan_sessions(projects, earliest, kb_paths, extractor):
             main = len(rel) == 1
             sid = rel[0][:-len(".jsonl")] if main else rel[0]
             session = sessions.setdefault(sid, {"start": None, "cwd": None, "scheduled": False, "tools": 0,
-                                                "reads": set(), "messages": []})
+                                                "reads": set(), "messages": [], "skills": []})
             scan_file(path, session, kb_paths, extractor, main)
     return sessions
 
@@ -469,6 +503,67 @@ def count_memos(kb, weeks):
             counts[week_start(day)] += sum(1 for line in p.read_text(encoding="utf-8").splitlines() if MEMO_RE.match(line))
     return counts
 
+def read_signal_rows(path):
+    """모은 말 목록 파일의 줄. [{time, session, kind, said, have}]. 형식은 collect_signals.py 가 쓰는 표다."""
+    rows = []
+    for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
+        if SIGNAL_ROW_RE.match(line):
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) == 5:
+                rows.append(dict(zip(("time", "session", "kind", "said", "have"), cells)))
+    return rows
+
+def count_signals(kb, weeks):
+    """{주: [다시 물음, 메모·기록 없는 지적, 목록이 있는 날 수]}. 목록이 없는 주는 들어 있지 않다."""
+    counts = {}
+    for p in sorted((kb / "evolve" / "signals").glob("*.md")):
+        try:
+            day = datetime.date.fromisoformat(p.stem)
+        except ValueError:
+            continue
+        if week_start(day) not in weeks:
+            continue
+        rows = read_signal_rows(p)
+        entry = counts.setdefault(week_start(day), [0, 0, 0])
+        entry[0] += sum(1 for row in rows if row["kind"] == "다시 물음")
+        entry[1] += sum(1 for row in rows if row["kind"] == "지적" and row["have"] == "없음")
+        entry[2] += 1
+    return counts
+
+def stale_groups(text, as_of):
+    """상황판에서 고친 날짜가 as_of 보다 STALE_DAYS 일 넘게 앞선 묶음 수. 고친 날짜 줄이 없는 묶음은 세지 않는다."""
+    stale, inside = 0, False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            inside = True
+            continue
+        m = BOARD_DAY_RE.match(line)
+        if not (inside and m):
+            continue
+        inside = False   # 묶음 하나에 날짜 하나만 본다
+        try:
+            stale += (as_of - datetime.date.fromisoformat(m.group(1))).days > STALE_DAYS
+        except ValueError:
+            continue
+    return stale
+
+def board_text(kb, week_is_current, day_after):
+    """상황판의 글. 이번 주는 지금 파일, 지난 주는 그 주 끝에 커밋되어 있던 파일. 읽을 수 없으면 None."""
+    if week_is_current:
+        path = kb / "wiki" / "board.md"
+        return path.read_text(encoding="utf-8") if path.is_file() else None
+    branch = main_branch(kb) if toplevel(kb) else None
+    rev = rev_at(kb, branch, day_after) if branch else None
+    return git(kb, "show", f"{rev}:./wiki/board.md") if rev else None
+
+def own_skills():
+    """이 스크립트가 든 플러그인의 스킬 이름들(<플러그인 이름>:<스킬 폴더>). 플러그인 폴더가 아니면 []."""
+    root = pathlib.Path(__file__).resolve().parents[3]
+    if not ((root / ".claude-plugin" / "plugin.json").is_file() or (root / "plugin.json").is_file()):
+        return []
+    name = plugin_name(root)
+    return sorted(f"{name}:{path.parent.name}" for path in (root / "skills").glob("*/SKILL.md"))
+
 # ---------------------------------------------------------------------------
 # 표
 # ---------------------------------------------------------------------------
@@ -490,19 +585,37 @@ def table_row(row):
             show(row["read_card"], "%"), show(row["read_raw"], "%"), show(guide), show(other),
             show(row["plugin_md_chars"]), show(row["evolve_commits"]), show(row["evolve_shrinking"]), show(row["memo_lines"])]
 
-def write_table(path, rows):
+def usage_row(row):
+    last = datetime.date.fromisoformat(row["last_day"])
+    runs = sorted(row["skill_runs"].items(), key=lambda item: (-item[1], item[0]))
+    skills = ", ".join(f"{name} {count}" for name, count in runs) or "없음"
+    if row["skills_unused"]:
+        skills += " / 안 불림: " + ", ".join(row["skills_unused"])
+    return [f"{row['week']} ~ {last.strftime('%m-%d')}", show(row["reasks"]), show(row["bare_corrections"]),
+            show(row["collected_days"]), show(row["stale_board"]), skills.replace("|", "/")]
+
+def write_rows(path, intro, header, aligns, lines_by_week, notes):
+    """주마다 한 줄인 표 파일을 고쳐 쓴다. 파일에 있던 다른 주의 줄은 그대로 둔다."""
     kept = {}
     if path.is_file():
         for line in path.read_text(encoding="utf-8").splitlines():
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             if line.lstrip().startswith("|") and re.match(r"^\d{4}-\d{2}-\d{2}", cells[0]):
                 kept[cells[0][:10]] = "| " + " | ".join(cells) + " |"
-    for row in rows:
-        kept[row["week"]] = "| " + " | ".join(table_row(row)) + " |"
-    lines = INTRO + ["| " + " | ".join(HEADER) + " |", "| :- |" + " -: |" * (len(HEADER) - 1)]
-    lines += [kept[week] for week in sorted(kept)] + NOTES
+    for week, cells in lines_by_week:
+        kept[week] = "| " + " | ".join(cells) + " |"
+    lines = intro + ["| " + " | ".join(header) + " |", aligns]
+    lines += [kept[week] for week in sorted(kept)] + notes
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+def write_table(path, rows):
+    write_rows(path, INTRO, HEADER, "| :- |" + " -: |" * (len(HEADER) - 1),
+               [(row["week"], table_row(row)) for row in rows], NOTES)
+
+def write_usage(path, rows):
+    write_rows(path, USAGE_INTRO, USAGE_HEADER, "| :- |" + " -: |" * (len(USAGE_HEADER) - 2) + " :- |",
+               [(row["week"], usage_row(row)) for row in rows], USAGE_NOTES)
 
 # ---------------------------------------------------------------------------
 
@@ -542,6 +655,7 @@ def main():
     sessions = scan_sessions(projects, weeks[0], kb_paths, extractor)
     messages, seen = collections.Counter(), set()
     work = {week: [] for week in weeks}
+    skill_runs, seen_calls = {week: collections.Counter() for week in weeks}, set()
     for sid in sorted(sessions):
         session = sessions[sid]
         if session["scheduled"]:
@@ -554,6 +668,14 @@ def main():
             seen.add(key)
             if week_start(day) in work:
                 messages[week_start(day)] += 1
+        for call, stamp, name in session["skills"]:
+            key = call or (sid, stamp, name)
+            day = local_day(stamp)
+            if key in seen_calls or day is None:
+                continue
+            seen_calls.add(key)
+            if week_start(day) in skill_runs:
+                skill_runs[week_start(day)][name] += 1
         start = local_day(session["start"])
         if (start and week_start(start) in work and session["tools"] >= a.min_tools
                 and kb_paths.inside(session["cwd"]) is None):
@@ -561,6 +683,7 @@ def main():
 
     # 지식 베이스
     cases, memos = count_cases(kb, set(weeks)), count_memos(kb, set(weeks))
+    signals, plugin_skills = count_signals(kb, set(weeks)), own_skills()
 
     # 저장소
     limits = load_limits(a.limits)
@@ -592,10 +715,21 @@ def main():
         for week, (total, shrinking) in evolve_commits(repo, branch, is_rule, weeks[0], weeks).items():
             evolve[week] = [(evolve[week] or [0, 0])[0] + total, (evolve[week] or [0, 0])[1] + shrinking]
 
-    rows = []
+    rows, usage = [], []
     for week in weeks:
         last_day = min(week + datetime.timedelta(days=6), today)
         day_after = last_day + datetime.timedelta(days=1)
+        board = board_text(kb, week == weeks[-1], day_after)
+        usage.append({
+            "week": week.isoformat(),
+            "last_day": last_day.isoformat(),
+            "reasks": signals[week][0] if week in signals else None,
+            "bare_corrections": signals[week][1] if week in signals else None,
+            "collected_days": signals[week][2] if week in signals else 0,
+            "stale_board": stale_groups(board, last_day) if board is not None else None,
+            "skill_runs": dict(skill_runs[week]),
+            "skills_unused": [name for name in plugin_skills if name not in skill_runs[week]],
+        })
         rule_chars = plugin_chars = None
         if rules_repo and rules_branch:
             rev = rev_at(rules_repo, rules_branch, day_after)
@@ -625,16 +759,21 @@ def main():
             "evolve_shrinking": evolve[week][1] if evolve[week] else None,
             "memo_lines": memos[week],
         })
-    target = kb / "evolve" / "metrics.md"
+    target, usage_target = kb / "evolve" / "metrics.md", kb / "evolve" / "usage.md"
     if not a.no_write:
         write_table(target, rows)
+        write_usage(usage_target, usage)
     if a.json:
-        print(json.dumps({"weeks": rows}, ensure_ascii=False, indent=2))
+        print(json.dumps({"weeks": rows, "usage": usage}, ensure_ascii=False, indent=2))
     else:
         print(("고치지 않음: " if a.no_write else "고침: ") + str(target))
         print("| " + " | ".join(HEADER) + " |")
         for row in rows:
             print("| " + " | ".join(table_row(row)) + " |")
+        print(("고치지 않음: " if a.no_write else "고침: ") + str(usage_target))
+        print("| " + " | ".join(USAGE_HEADER) + " |")
+        for row in usage:
+            print("| " + " | ".join(usage_row(row)) + " |")
 
 if __name__ == "__main__":
     main()
