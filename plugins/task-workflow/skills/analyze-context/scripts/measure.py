@@ -47,6 +47,11 @@
                   한 번으로 센다. 예약 작업은 서브에이전트에 지침 파일의 경로를 넘겨 스킬을 돌려서 Skill 도구로는 안 잡힌다.
                   다른 스킬이 참조로 읽은 것도 들어가므로 실제보다 많이 잡힐 수 있다.
 - skills_unused   이 스크립트가 든 플러그인의 스킬 가운데 그 주에 위 둘 어디에도 없는 것.
+- skill_desc_chars, skill_count
+                  플러그인 스킬들의 SKILL.md 머리말 description 글자 수의 합과 스킬 수. 그 주 끝(이번 주는 지금)
+                  플러그인 저장소의 기본 브랜치에 커밋된 내용이다. 스킬의 본문과 참조 문서는 부를 때만 읽히고
+                  description 은 세션마다 읽힌다. 플러그인 저장소를 못 찾으면 이번 주만 이 스크립트가 든
+                  플러그인 폴더(설치본)에서 세고 지난 주는 비운다.
 
 경로는 인자나 환경 변수로 받는다. 스크립트에 개인 경로를 적지 않는다.
 - 세션 기록: --projects-dir, 없으면 <Claude 설정 폴더>/projects (Claude 설정 폴더는 $CLAUDE_CONFIG_DIR 또는 ~/.claude)
@@ -82,7 +87,8 @@ NOTES = [
     "- 메모 줄: `raw/journal/`의 그 주 날짜 파일에 적힌 메모 줄 수.",
     "- `-`는 읽을 수 없었던 값이다.",
 ]
-USAGE_HEADER = ["주", "다시 물음", "메모 없는 지적", "모은 날", "오래된 상황판 묶음", "스킬 실행", "예약 작업이 쓴 스킬", "안 불림"]
+USAGE_HEADER = ["주", "다시 물음", "메모 없는 지적", "모은 날", "오래된 상황판 묶음", "스킬 실행", "예약 작업이 쓴 스킬", "안 불림",
+                "스킬 설명 글자", "스킬 수"]
 USAGE_INTRO = [
     "# 쓰임",
     "",
@@ -100,9 +106,11 @@ USAGE_NOTES = [
     "- 스킬 실행: 사람과 대화한 세션에서 Skill 도구로 부른 횟수. 예약 작업 세션은 여기에 넣지 않는다.",
     "- 예약 작업이 쓴 스킬: 스킬마다 그 스킬을 쓴 예약 작업 세션 수. Skill 도구로 불렀거나 이 플러그인 스킬의 지침 파일(`SKILL.md`, `references/`)을 읽은 세션이다. 다른 스킬이 참조로 읽은 것도 들어간다.",
     "- 안 불림: 이 플러그인의 스킬 가운데 그 주에 위 두 칸 어디에도 없는 것.",
+    "- 스킬 설명 글자, 스킬 수: 그 주 끝에 커밋되어 있던 플러그인 스킬들의 `SKILL.md` 머리말 description 글자 수의 합과 스킬 수. 매번 읽히는 양은 이 칸과 `metrics.md`의 전역 지침·응답 양식 글자다.",
     "- `-`는 읽을 수 없었던 값이다.",
 ]
 STALE_DAYS = 14
+SKILL_DOC_RE = re.compile(r"(?:^|/)skills/[^/]+/SKILL\.md$")
 SKILL_FILE_RE = re.compile(r"/skills/([^/]+)/(?:SKILL\.md$|references/)")
 SIGNAL_ROW_RE = re.compile(r"^\| \d{2}:\d{2} \| ")
 BOARD_DAY_RE = re.compile(r"^- 고친 날짜:\s*(\d{4}-\d{2}-\d{2})")
@@ -170,8 +178,8 @@ def rev_at(repo, branch, day_after):
     out = git(repo, "rev-list", "-1", f"--before={moment}", branch)
     return out.strip() if out and out.strip() else None
 
-def blob_chars(repo, rev, paths):
-    """{경로: 글자 수}. 그 커밋에 없는 경로는 뺀다. git cat-file --batch 한 번으로 읽는다."""
+def blob_texts(repo, rev, paths):
+    """{경로: 글}. 그 커밋에 없는 경로는 뺀다. git cat-file --batch 한 번으로 읽는다."""
     if not paths:
         return {}
     try:
@@ -179,7 +187,7 @@ def blob_chars(repo, rev, paths):
                               input="".join(f"{rev}:{path}\n" for path in paths).encode("utf-8"))
     except OSError:
         return {}
-    data, position, sizes = done.stdout, 0, {}
+    data, position, texts = done.stdout, 0, {}
     for path in paths:
         end = data.find(b"\n", position)
         if end < 0:
@@ -188,9 +196,13 @@ def blob_chars(repo, rev, paths):
         position = end + 1
         if len(head) == 3 and head[1] == b"blob":
             size = int(head[2])
-            sizes[path] = len(data[position:position + size].decode("utf-8", "replace"))
+            texts[path] = data[position:position + size].decode("utf-8", "replace")
             position += size + 1
-    return sizes
+    return texts
+
+def blob_chars(repo, rev, paths):
+    """{경로: 글자 수}. 그 커밋에 없는 경로는 뺀다."""
+    return {path: len(text) for path, text in blob_texts(repo, rev, paths).items()}
 
 def tree_paths(repo, rev):
     out = git(repo, "ls-tree", "-r", "--name-only", "-z", rev)
@@ -205,6 +217,36 @@ def plugin_md_paths(paths):
     """플러그인 폴더 아래의 md. 플러그인 폴더를 가릴 수 없으면 저장소의 md 전부."""
     roots = plugin_roots(paths)
     return [name for name in paths if name.endswith(".md") and (not roots or any(name.startswith(root) for root in roots))]
+
+def skill_doc_paths(paths):
+    """플러그인 폴더 아래의 skills/<스킬>/SKILL.md. 플러그인 폴더를 가릴 수 없으면 저장소의 그런 파일 전부."""
+    roots = plugin_roots(paths)
+    return [name for name in paths if SKILL_DOC_RE.search(name) and (not roots or any(name.startswith(root) for root in roots))]
+
+def description_of(text):
+    """SKILL.md 머리말의 description 값. 없으면 빈 글. 여러 줄로 적은 값(`>`, `|`, 이어 쓴 줄)은 한 줄로 잇는다."""
+    m = re.match(r"^---\r?\n(.*?)\r?\n---", text, re.S)
+    lines = m.group(1).splitlines() if m else []
+    for index, line in enumerate(lines):
+        if not line.startswith("description:"):
+            continue
+        value = line[len("description:"):].strip()
+        more = []
+        for later in lines[index + 1:]:
+            if later.strip() and not later[:1].isspace():
+                break
+            more.append(later.strip())
+        if re.match(r"^[>|][+-]?\d*$", value):
+            value = ""
+        value = " ".join(part for part in [value] + more if part)
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        return value
+    return ""
+
+def description_chars(texts):
+    """[SKILL.md 의 글] → [description 글자 수의 합, 스킬 수]"""
+    return [sum(len(description_of(text)) for text in texts), len(texts)]
 
 def default_rule_file(path):
     return path == "CLAUDE.md" or (path.startswith("output-styles/") and path.endswith(".md"))
@@ -299,6 +341,19 @@ def find_plugin_repo(given, kb):
         return found
     own = toplevel(here.parent)
     return own if own and tracks(own, here) else None
+
+def installed_skill_docs():
+    """이 스크립트가 든 플러그인 폴더의 SKILL.md 글들. 플러그인 폴더가 아니면 None."""
+    root = pathlib.Path(__file__).resolve().parents[3]
+    if not ((root / ".claude-plugin" / "plugin.json").is_file() or (root / "plugin.json").is_file()):
+        return None
+    texts = []
+    for path in sorted((root / "skills").glob("*/SKILL.md")):
+        try:
+            texts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return texts
 
 def installed_md_chars():
     """이 스크립트가 든 플러그인 폴더의 md 글자 수. 플러그인 저장소를 못 찾았을 때 이번 주 값으로 쓴다."""
@@ -604,7 +659,8 @@ def usage_row(row):
         return (", ".join(f"{name} {count}" for name, count in ordered) or "없음").replace("|", "/")
     return [f"{row['week']} ~ {last.strftime('%m-%d')}", show(row["reasks"]), show(row["bare_corrections"]),
             show(row["collected_days"]), show(row["stale_board"]), counts(row["skill_runs"]),
-            counts(row["skill_runs_scheduled"]), (", ".join(row["skills_unused"]) or "없음").replace("|", "/")]
+            counts(row["skill_runs_scheduled"]), (", ".join(row["skills_unused"]) or "없음").replace("|", "/"),
+            show(row["skill_desc_chars"]), show(row["skill_count"])]
 
 def write_rows(path, intro, header, aligns, lines_by_week, notes):
     """주마다 한 줄인 표 파일을 고쳐 쓴다. 파일에 있던 다른 주의 줄은 그대로 둔다."""
@@ -626,7 +682,7 @@ def write_table(path, rows):
                [(row["week"], table_row(row)) for row in rows], NOTES)
 
 def write_usage(path, rows):
-    write_rows(path, USAGE_INTRO, USAGE_HEADER, "| :- |" + " -: |" * 4 + " :- |" * (len(USAGE_HEADER) - 5),
+    write_rows(path, USAGE_INTRO, USAGE_HEADER, "| :- |" + " -: |" * 4 + " :- |" * 3 + " -: |" * (len(USAGE_HEADER) - 8),
                [(row["week"], usage_row(row)) for row in rows], USAGE_NOTES)
 
 # ---------------------------------------------------------------------------
@@ -739,6 +795,13 @@ def main():
         last_day = min(week + datetime.timedelta(days=6), today)
         day_after = last_day + datetime.timedelta(days=1)
         board = board_text(kb, week == weeks[-1], day_after)
+        described = None
+        if plugin_repo and plugin_branch:
+            rev = rev_at(plugin_repo, plugin_branch, day_after)
+            if rev:
+                described = description_chars(list(blob_texts(plugin_repo, rev, skill_doc_paths(tree_paths(plugin_repo, rev))).values()))
+        elif week == weeks[-1] and installed_skill_docs() is not None:
+            described = description_chars(installed_skill_docs())
         usage.append({
             "week": week.isoformat(),
             "last_day": last_day.isoformat(),
@@ -750,6 +813,8 @@ def main():
             "skill_runs_scheduled": dict(scheduled_runs[week]),
             "skills_unused": [name for name in plugin_skills
                               if name not in skill_runs[week] and name not in scheduled_runs[week]],
+            "skill_desc_chars": described[0] if described else None,
+            "skill_count": described[1] if described else None,
         })
         rule_chars = plugin_chars = None
         if rules_repo and rules_branch:
